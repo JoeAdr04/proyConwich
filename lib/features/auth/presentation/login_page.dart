@@ -110,9 +110,9 @@ class _LoginPageState extends State<LoginPage> {
                               color: scheme.primary,
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.restaurant_menu,
-                              color: Color(0xFF2B1A12), // Texto oscuro
+                              color: scheme.onPrimary, // Blanco cálido
                               size: 30,
                             ),
                           ),

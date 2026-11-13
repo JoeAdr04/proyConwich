@@ -160,9 +160,9 @@ class _DashboardPageState extends State<DashboardPage> {
               color: scheme.primary,
               borderRadius: BorderRadius.circular(15),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.wb_sunny_outlined,
-              color: Color(0xFF2B1A12), // Texto oscuro
+              color: scheme.onPrimary, // Blanco cálido
               size: 28,
             ),
           );

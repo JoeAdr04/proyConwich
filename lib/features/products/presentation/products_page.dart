@@ -8,14 +8,14 @@ import '../../../core/session.dart';
 import '../../../ui/common.dart';
 
 const _paleta = <int>[
-  0xFF0F766E,
-  0xFF2563EB,
-  0xFF7C3AED,
-  0xFFDB2777,
-  0xFFEA580C,
-  0xFFCA8A04,
-  0xFF16A34A,
-  0xFF475569,
+  0xFF70452D, // Nogal
+  0xFF3D2419, // Espresso
+  0xFFC18A55, // Caramelo
+  0xFFE8C995, // Dorado
+  0xFF574537, // Texto
+  0xFF2B1A12, // Texto oscuro
+  0xFF70452D, // Nogal
+  0xFFC18A55, // Caramelo
 ];
 
 class _ProductsData {

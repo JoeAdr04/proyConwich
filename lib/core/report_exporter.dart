@@ -55,9 +55,11 @@ class ReportExporter {
       ..sort((a, b) => b.ventas.compareTo(a.ventas));
     final top = productos.take(10).toList();
     final resumen = data.resumen;
-    final scheme = PdfColor.fromHex('#0F766E');
-    final suave = PdfColor.fromHex('#E6F2F0');
-    final gris = PdfColor.fromHex('#5F6B6A');
+    final scheme = PdfColor.fromHex('#70452D');
+    final acento = PdfColor.fromHex('#C18A55');
+    final suave = PdfColor.fromHex('#F3E9D9');
+    final gris = PdfColor.fromHex('#574537');
+    final blanco = PdfColor.fromHex('#FFF9F0');
 
     pw.Widget dato(String etiqueta, String valor) => pw.Container(
       padding: const pw.EdgeInsets.all(8),
@@ -105,7 +107,7 @@ class ReportExporter {
                     width: 250 * proporcion,
                     height: 9,
                     decoration: pw.BoxDecoration(
-                      color: scheme,
+                      color: acento,
                       borderRadius: pw.BorderRadius.circular(4),
                     ),
                   ),
@@ -252,7 +254,7 @@ class ReportExporter {
             headerStyle: pw.TextStyle(
               fontSize: 8,
               fontWeight: pw.FontWeight.bold,
-              color: PdfColors.white,
+              color: blanco,
             ),
             headerDecoration: pw.BoxDecoration(color: scheme),
             cellStyle: const pw.TextStyle(fontSize: 8),
@@ -295,7 +297,7 @@ class ReportExporter {
               headerStyle: pw.TextStyle(
                 fontSize: 8,
                 fontWeight: pw.FontWeight.bold,
-                color: PdfColors.white,
+                color: blanco,
               ),
               headerDecoration: pw.BoxDecoration(color: scheme),
               cellStyle: const pw.TextStyle(fontSize: 8),
@@ -344,7 +346,7 @@ class ReportExporter {
               headerStyle: pw.TextStyle(
                 fontSize: 8,
                 fontWeight: pw.FontWeight.bold,
-                color: PdfColors.white,
+                color: blanco,
               ),
               headerDecoration: pw.BoxDecoration(color: scheme),
               cellStyle: const pw.TextStyle(fontSize: 8),
@@ -389,7 +391,7 @@ class ReportExporter {
               headerStyle: pw.TextStyle(
                 fontSize: 8,
                 fontWeight: pw.FontWeight.bold,
-                color: PdfColors.white,
+                color: blanco,
               ),
               headerDecoration: pw.BoxDecoration(color: scheme),
               cellStyle: const pw.TextStyle(fontSize: 8),
@@ -516,7 +518,7 @@ class ReportExporter {
       ..sort((a, b) => b.ventas.compareTo(a.ventas));
     final maximo = top.isEmpty ? 1.0 : top.first.ventas;
     final estiloBarra = CellStyle(
-      backgroundColorHex: ExcelColor.fromHexString('FF0F766E'),
+      backgroundColorHex: ExcelColor.fromHexString('FFC18A55'),
     );
     for (final producto in top.take(10)) {
       final fila = grafico.maxRows;

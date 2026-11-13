@@ -176,9 +176,9 @@ class _OnboardingAdminPageState extends State<OnboardingAdminPage> {
                                   color: scheme.primary,
                                   borderRadius: BorderRadius.circular(15),
                                 ),
-                                child: const Icon(
+                                child: Icon(
                                   Icons.shield_outlined,
-                                  color: Color(0xFF2B1A12), // Texto oscuro
+                                  color: scheme.onPrimary, // Blanco cálido
                                   size: 27,
                                 ),
                               ),

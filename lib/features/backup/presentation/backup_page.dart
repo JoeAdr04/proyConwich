@@ -394,7 +394,10 @@ class _BackupPageState extends State<BackupPage> {
             ),
             FilledButton(
               onPressed: bloqueado ? null : () => Navigator.pop(context, true),
-              style: FilledButton.styleFrom(backgroundColor: scheme.error),
+              style: FilledButton.styleFrom(
+                backgroundColor: scheme.error,
+                foregroundColor: scheme.onError,
+              ),
               child: const Text('Restaurar'),
             ),
           ],

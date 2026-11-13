@@ -41,26 +41,47 @@ class RestaurantApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         // Identidad visual ConWich: Espresso, Nogal, Caramelo, Dorado, Crema
-        // y Blanco cálido. Los colores semánticos (error, etc.) se conservan.
+        // y Blanco cálido. Los colores semánticos se mantienen distinguibles.
         colorScheme: ColorScheme.fromSeed(
           seedColor: seed,
           brightness: Brightness.light,
         ).copyWith(
-          primary: const Color(0xFFC18A55), // Caramelo
-          onPrimary: const Color(0xFF2B1A12), // Texto oscuro
-          secondary: const Color(0xFF70452D), // Nogal
+          primary: const Color(0xFF70452D), // Nogal
+          onPrimary: const Color(0xFFFFF9F0), // Blanco cálido
+          primaryContainer: const Color(0xFFE8C995), // Dorado
+          onPrimaryContainer: const Color(0xFF2B1A12), // Texto oscuro
+          secondary: const Color(0xFF574537), // Texto
           onSecondary: const Color(0xFFFFF9F0), // Blanco cálido
-          tertiary: const Color(0xFFC18A55), // Caramelo
-          onTertiary: const Color(0xFF2B1A12), // Texto oscuro
+          secondaryContainer: const Color(0xFFE8C995), // Dorado
+          onSecondaryContainer: const Color(0xFF2B1A12), // Texto oscuro
+          tertiary: const Color(0xFF3D2419), // Espresso
+          onTertiary: const Color(0xFFF3E9D9), // Crema
+          tertiaryContainer: const Color(0xFFE8C995), // Dorado
+          onTertiaryContainer: const Color(0xFF2B1A12), // Texto oscuro
+          error: const Color(0xFFA9442F), // Terracota apagado
+          onError: const Color(0xFFFFF9F0), // Blanco cálido
+          errorContainer: const Color(0xFFF3DAD3), // Terracota suave
+          onErrorContainer: const Color(0xFF3B120C), // Error oscuro
           surface: const Color(0xFFFFF9F0), // Blanco cálido
           onSurface: const Color(0xFF2B1A12), // Texto oscuro
           onSurfaceVariant: const Color(0xFF574537), // Texto
+          surfaceDim: const Color(0xFFF3E9D9), // Crema
+          surfaceBright: const Color(0xFFFFF9F0), // Blanco cálido
+          surfaceContainerLowest: const Color(0xFFFFF9F0), // Blanco cálido
+          surfaceContainerLow: const Color(0xFFFFF9F0), // Blanco cálido
+          surfaceContainer: const Color(0xFFF3E9D9), // Crema
+          surfaceContainerHigh: const Color(0xFFF3E9D9), // Crema
+          surfaceContainerHighest: const Color(0xFFF3E9D9), // Crema
           outline: const Color(0xFF70452D), // Nogal
           outlineVariant: const Color(0xFFE8C995), // Dorado
           inverseSurface: const Color(0xFF3D2419), // Espresso
           onInverseSurface: const Color(0xFFF3E9D9), // Crema
+          inversePrimary: const Color(0xFFC18A55), // Caramelo
+          shadow: const Color(0xFF3D2419), // Espresso
+          scrim: const Color(0xFF3D2419), // Espresso
+          surfaceTint: const Color(0xFFC18A55), // Caramelo
         ),
-        scaffoldBackgroundColor: const Color(0xFFF3E9D9), // Crema
+        scaffoldBackgroundColor: const Color(0xFFFFF9F0), // Blanco cálido
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF3D2419), // Espresso
           surfaceTintColor: Color(0xFF3D2419),
@@ -72,12 +93,23 @@ class RestaurantApp extends StatelessWidget {
           surfaceTintColor: Color(0xFF3D2419),
         ),
         cardTheme: const CardThemeData(
-          color: Color(0xFFFFF9F0), // Blanco cálido
+          color: Color(0xFFF3E9D9), // Crema
+          surfaceTintColor: Colors.transparent,
           margin: EdgeInsets.zero,
+        ),
+        dialogTheme: const DialogThemeData(
+          backgroundColor: Color(0xFFFFF9F0), // Blanco cálido
+          surfaceTintColor: Colors.transparent,
+        ),
+        popupMenuTheme: const PopupMenuThemeData(
+          color: Color(0xFFFFF9F0), // Blanco cálido
+          surfaceTintColor: Colors.transparent,
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: const Color(0xFFFFF9F0), // Blanco cálido
+          prefixIconColor: const Color(0xFF70452D), // Nogal
+          suffixIconColor: const Color(0xFF70452D), // Nogal
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,
@@ -93,6 +125,8 @@ class RestaurantApp extends StatelessWidget {
         ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFC18A55), // Caramelo
+            foregroundColor: const Color(0xFF2B1A12), // Texto oscuro
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
@@ -100,9 +134,16 @@ class RestaurantApp extends StatelessWidget {
         ),
         outlinedButtonTheme: OutlinedButtonThemeData(
           style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFF70452D), // Nogal
+            side: const BorderSide(color: Color(0xFFE8C995)), // Dorado
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFF70452D), // Nogal
           ),
         ),
         navigationRailTheme: const NavigationRailThemeData(
@@ -113,7 +154,60 @@ class RestaurantApp extends StatelessWidget {
           selectedIconTheme: IconThemeData(color: Color(0xFFF3E9D9)),
           unselectedIconTheme: IconThemeData(color: Color(0xFFE8C995)),
         ),
-        dividerTheme: const DividerThemeData(space: 1),
+        chipTheme: const ChipThemeData(
+          backgroundColor: Color(0x55E8C995), // Dorado translúcido
+          selectedColor: Color(0xFFE8C995), // Dorado
+          secondarySelectedColor: Color(0xFFC18A55), // Caramelo
+          disabledColor: Color(0x33E8C995), // Dorado tenue
+          side: BorderSide(color: Color(0xFFE8C995)), // Dorado
+          checkmarkColor: Color(0xFF2B1A12), // Texto oscuro
+          deleteIconColor: Color(0xFF70452D), // Nogal
+        ),
+        tabBarTheme: const TabBarThemeData(
+          labelColor: Color(0xFF70452D), // Nogal
+          unselectedLabelColor: Color(0xFF574537), // Texto
+          indicatorColor: Color(0xFFC18A55), // Caramelo
+          dividerColor: Color(0xFFE8C995), // Dorado
+          overlayColor: WidgetStatePropertyAll(Color(0x1FC18A55)),
+        ),
+        dataTableTheme: const DataTableThemeData(
+          headingRowColor: WidgetStatePropertyAll(Color(0xFFE8C995)),
+        ),
+        listTileTheme: const ListTileThemeData(
+          iconColor: Color(0xFF70452D), // Nogal
+          textColor: Color(0xFF2B1A12), // Texto oscuro
+          selectedColor: Color(0xFFC18A55), // Caramelo
+          selectedTileColor: Color(0x33E8C995), // Dorado suave
+        ),
+        switchTheme: SwitchThemeData(
+          thumbColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return const Color(0xFFC18A55); // Caramelo
+            }
+            return const Color(0xFFE8C995); // Dorado
+          }),
+          trackColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return const Color(0xFFE8C995); // Dorado
+            }
+            return const Color(0xFFF3E9D9); // Crema
+          }),
+          trackOutlineColor: const WidgetStatePropertyAll(
+            Color(0xFFE8C995), // Dorado
+          ),
+        ),
+        textSelectionTheme: const TextSelectionThemeData(
+          cursorColor: Color(0xFFC18A55), // Caramelo
+          selectionColor: Color(0x55E8C995), // Dorado translúcido
+          selectionHandleColor: Color(0xFFC18A55), // Caramelo
+        ),
+        scrollbarTheme: const ScrollbarThemeData(
+          thumbColor: WidgetStatePropertyAll(Color(0x8070452D)),
+        ),
+        dividerTheme: const DividerThemeData(
+          space: 1,
+          color: Color(0xFFE8C995), // Dorado
+        ),
       ),
       home: const StartupGate(),
     );

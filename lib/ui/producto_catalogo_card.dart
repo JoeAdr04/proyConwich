@@ -75,7 +75,7 @@ class ProductoCatalogoCard extends StatelessWidget {
       child: Material(
         color: agotado
             ? scheme.errorContainer.withValues(alpha: 0.25)
-            : const Color(0xFFFFF9F0), // Blanco cálido
+            : scheme.surfaceContainer, // Crema
         borderRadius: BorderRadius.circular(18),
         child: InkWell(
           onTap: onTap,
@@ -243,14 +243,14 @@ class ProductoCatalogoCard extends StatelessWidget {
                           const Icon(
                             Icons.block,
                             size: 12,
-                            color: Colors.white,
+                            color: Color(0xFFFFF9F0), // Blanco cálido
                           ),
                           const SizedBox(width: 4),
                           Text(
                             'Agotado',
                             style: Theme.of(context).textTheme.labelSmall
                                 ?.copyWith(
-                                  color: Colors.white,
+                                  color: Color(0xFFFFF9F0), // Blanco cálido
                                   fontWeight: FontWeight.w700,
                                 ),
                           ),
@@ -268,12 +268,15 @@ class ProductoCatalogoCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: verde,
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
+                        border: Border.all(
+                          color: Color(0xFFFFF9F0), // Blanco cálido
+                          width: 2,
+                        ),
                       ),
                       child: const Icon(
                         Icons.check,
                         size: 16,
-                        color: Colors.white,
+                        color: Color(0xFFFFF9F0), // Blanco cálido
                       ),
                     ),
                   ),

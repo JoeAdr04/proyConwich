@@ -326,11 +326,11 @@ class _AppShellState extends State<AppShell> {
               children: [
                 CircleAvatar(
                   radius: 16,
-                  backgroundColor: scheme.primary.withValues(alpha: 0.14),
+                  backgroundColor: scheme.primaryContainer,
                   child: Text(
                     widget.usuario.inicial,
                     style: TextStyle(
-                      color: scheme.primary,
+                      color: scheme.onPrimaryContainer,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -377,7 +377,10 @@ class _AppShellState extends State<AppShell> {
             title: Row(
               children: [
                 if (!wide) ...[
-                  Icon(Icons.restaurant_menu, color: scheme.primary),
+                  Icon(
+                    Icons.restaurant_menu,
+                    color: scheme.primaryContainer,
+                  ),
                   const SizedBox(width: 8),
                 ],
                 Text(
@@ -510,9 +513,9 @@ class _AppShellState extends State<AppShell> {
                                 color: scheme.primary,
                                 borderRadius: BorderRadius.circular(13),
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 Icons.restaurant,
-                                color: Color(0xFF2B1A12), // Texto oscuro
+                                color: scheme.onPrimary, // Blanco cálido
                               ),
                             ),
                             if (extended) ...[
