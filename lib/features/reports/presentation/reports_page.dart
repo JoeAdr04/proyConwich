@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../core/date_utils.dart';
@@ -164,7 +166,7 @@ class _ReportsPageState extends State<ReportsPage> {
                 children: [
                   PageHeader(
                     title: 'Reportes',
-                    subtitle: 'Resultado = ventas − costo de insumos − salidas. Flujo de caja = cobros − salidas.',
+                    subtitle: 'Ganancia = ventas − gasto en insumos − salidas de emergencia.',
                     actions: [
                       OutlinedButton.icon(
                         onPressed: () => setState(_reload),
@@ -268,31 +270,19 @@ class _ReportsPageState extends State<ReportsPage> {
         esAngosto(MediaQuery.sizeOf(context).width) ? 12 : 24,
       ),
       children: [
+        _ventasCard(context, resumen),
+        const SizedBox(height: 16),
         StatGrid(
           children: [
             StatCard(
-              label: 'Ventas',
-              value: formatMoney(resumen.ventas),
-              caption: '${resumen.pedidos} pedidos',
-              icon: Icons.trending_up,
-            ),
-            StatCard(
-              label: 'Cobros',
-              value: formatMoney(resumen.cobros),
-              caption:
-                  'Efectivo ${formatMoney(resumen.cobrosEfectivo)} · QR ${formatMoney(resumen.cobrosQr)}',
-              icon: Icons.payments_outlined,
-              color: scheme.tertiary,
-            ),
-            StatCard(
-              label: 'COGS',
-              value: formatMoney(resumen.cogs),
-              caption: 'Costo de insumos vendidos',
-              icon: Icons.soup_kitchen_outlined,
+              label: 'Gasto en insumos',
+              value: formatMoney(resumen.gastoInsumos),
+              caption: 'Lo que entró de insumos al stock',
+              icon: Icons.shopping_basket_outlined,
               color: scheme.secondary,
             ),
             StatCard(
-              label: 'Salidas',
+              label: 'Salidas de emergencia',
               value: formatMoney(resumen.salidas),
               caption:
                   'Efectivo ${formatMoney(resumen.salidasEfectivo)} · QR ${formatMoney(resumen.salidasQr)}',
@@ -300,18 +290,11 @@ class _ReportsPageState extends State<ReportsPage> {
               color: scheme.tertiary,
             ),
             StatCard(
-              label: 'Resultado',
-              value: formatMoney(resumen.resultado),
-              caption: 'Ventas − COGS − salidas',
+              label: 'Ganancia',
+              value: formatMoney(resumen.ganancia),
+              caption: 'Ventas − gasto en insumos − salidas',
               icon: Icons.insights,
-              color: resumen.resultado >= 0 ? scheme.primary : scheme.error,
-            ),
-            StatCard(
-              label: 'Flujo de caja',
-              value: formatMoney(resumen.flujoCaja),
-              caption: 'Cobros − salidas',
-              icon: Icons.account_balance_outlined,
-              color: resumen.flujoCaja >= 0 ? scheme.primary : scheme.error,
+              color: resumen.ganancia >= 0 ? scheme.primary : scheme.error,
             ),
           ],
         ),
@@ -329,18 +312,6 @@ class _ReportsPageState extends State<ReportsPage> {
               LabelValue(
                 label: 'Ticket promedio',
                 value: formatMoney(resumen.ticketPromedio),
-              ),
-              LabelValue(
-                label: 'Margen bruto',
-                value: formatPercent(resumen.margenBruto),
-              ),
-              LabelValue(
-                label: 'Ventas en efectivo (cobros)',
-                value: formatMoney(resumen.cobrosEfectivo),
-              ),
-              LabelValue(
-                label: 'Ventas por QR (cobros)',
-                value: formatMoney(resumen.cobrosQr),
               ),
             ],
           ),
@@ -380,6 +351,123 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
+  /// Tarjeta grande de ventas con los cobros Efectivo / QR bien visibles
+  /// (pensada para el cierre del día).
+  Widget _ventasCard(BuildContext context, ResumenFinanciero resumen) {
+    final scheme = Theme.of(context).colorScheme;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.trending_up, color: scheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'VENTAS',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            formatMoney(resumen.ventas),
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: scheme.primary,
+            ),
+          ),
+          Text(
+            '${resumen.pedidos} pedido(s) · ticket promedio ${formatMoney(resumen.ticketPromedio)}',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final efectivo = _bloquePago(
+                context,
+                'Efectivo',
+                resumen.cobrosEfectivo,
+                Icons.payments_outlined,
+              );
+              final qr = _bloquePago(
+                context,
+                'QR',
+                resumen.cobrosQr,
+                Icons.qr_code_2,
+              );
+              if (constraints.maxWidth < 480) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [efectivo, const SizedBox(height: 10), qr],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: efectivo),
+                  const SizedBox(width: 12),
+                  Expanded(child: qr),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bloquePago(
+    BuildContext context,
+    String label,
+    double monto,
+    IconData icono,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(icono, size: 30, color: scheme.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  formatMoney(monto),
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: scheme.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _productosTab(BuildContext context, _ReportData data) {
     if (data.productos.isEmpty) {
       return const EmptyState(
@@ -388,11 +476,97 @@ class _ReportsPageState extends State<ReportsPage> {
         message: 'No hay productos vendidos para mostrar.',
       );
     }
+    final total = data.productos.fold<double>(
+      0,
+      (suma, producto) => suma + producto.ventas,
+    );
     return ListView(
       padding: EdgeInsets.all(
         esAngosto(MediaQuery.sizeOf(context).width) ? 12 : 24,
       ),
       children: [
+        AppCard(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final torta = SizedBox(
+                width: 190,
+                height: 190,
+                child: CustomPaint(
+                  painter: _TortaPainter(
+                    valores: data.productos
+                        .map((producto) => producto.ventas)
+                        .toList(),
+                    colores: data.productos
+                        .map((producto) => Color(producto.color))
+                        .toList(),
+                  ),
+                ),
+              );
+              final leyenda = Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Productos vendidos',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  for (final producto in data.productos)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: Color(producto.color),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              producto.nombre,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ),
+                          Text(
+                            total <= 0
+                                ? ''
+                                : formatPercent(producto.ventas / total),
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+              if (constraints.maxWidth < 560) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(child: torta),
+                    const SizedBox(height: 16),
+                    leyenda,
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  torta,
+                  const SizedBox(width: 24),
+                  Expanded(child: leyenda),
+                ],
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
         AppCard(
           padding: EdgeInsets.zero,
           child: SingleChildScrollView(
@@ -402,8 +576,8 @@ class _ReportsPageState extends State<ReportsPage> {
                 DataColumn(label: Text('Producto')),
                 DataColumn(label: Text('Cantidad'), numeric: true),
                 DataColumn(label: Text('Ventas'), numeric: true),
-                DataColumn(label: Text('COGS'), numeric: true),
-                DataColumn(label: Text('Margen'), numeric: true),
+                DataColumn(label: Text('Costo'), numeric: true),
+                DataColumn(label: Text('Ganancia'), numeric: true),
               ],
               rows: data.productos
                   .map(
@@ -412,13 +586,13 @@ class _ReportsPageState extends State<ReportsPage> {
                         DataCell(Text(producto.nombre)),
                         DataCell(Text(formatQty(producto.cantidad))),
                         DataCell(Text(formatMoney(producto.ventas))),
-                        DataCell(Text(formatMoney(producto.cogs))),
+                        DataCell(Text(formatMoney(producto.costo))),
                         DataCell(
                           Text(
-                            formatMoney(producto.margen),
+                            formatMoney(producto.ganancia),
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: producto.margen >= 0
+                              color: producto.ganancia >= 0
                                   ? Theme.of(context).colorScheme.primary
                                   : Theme.of(context).colorScheme.error,
                             ),
@@ -634,4 +808,35 @@ class _TabBarHeader extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(covariant _TabBarHeader oldDelegate) =>
       oldDelegate.tabBar != tabBar || oldDelegate.color != color;
+}
+
+/// Gráfico de torta de los productos vendidos (por ventas en Bs).
+class _TortaPainter extends CustomPainter {
+  const _TortaPainter({required this.valores, required this.colores});
+
+  final List<double> valores;
+  final List<Color> colores;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final total = valores.fold<double>(0, (suma, valor) => suma + valor);
+    if (total <= 0) return;
+    final centro = size.center(Offset.zero);
+    final radio = math.min(size.width, size.height) / 2;
+    final rect = Rect.fromCircle(center: centro, radius: radio);
+    var angulo = -math.pi / 2;
+    for (var i = 0; i < valores.length; i++) {
+      if (valores[i] <= 0) continue;
+      final barrido = 2 * math.pi * (valores[i] / total);
+      final pintura = Paint()
+        ..style = PaintingStyle.fill
+        ..color = colores[i];
+      canvas.drawArc(rect, angulo, barrido, true, pintura);
+      angulo += barrido;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TortaPainter oldDelegate) =>
+      oldDelegate.valores != valores || oldDelegate.colores != colores;
 }

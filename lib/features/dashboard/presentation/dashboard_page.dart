@@ -162,7 +162,7 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
             child: const Icon(
               Icons.wb_sunny_outlined,
-              color: Colors.white,
+              color: Color(0xFF2B1A12), // Texto oscuro
               size: 28,
             ),
           );
@@ -249,32 +249,30 @@ class _DashboardPageState extends State<DashboardPage> {
               StatCard(
                 label: 'Ventas del día',
                 value: formatMoney(data.resumen.ventas),
-                caption: '${data.resumen.pedidos} pedidos',
+                caption:
+                    'Efectivo ${formatMoney(data.resumen.cobrosEfectivo)} · QR ${formatMoney(data.resumen.cobrosQr)}',
                 icon: Icons.trending_up,
               ),
               StatCard(
-                label: 'Cobros del día',
-                value: formatMoney(data.resumen.cobros),
-                caption:
-                    'Efectivo ${formatMoney(data.resumen.cobrosEfectivo)} · QR ${formatMoney(data.resumen.cobrosQr)}',
-                icon: Icons.payments_outlined,
+                label: 'Gasto en insumos',
+                value: formatMoney(data.resumen.gastoInsumos),
+                caption: 'Lo que entró de insumos al stock',
+                icon: Icons.shopping_basket_outlined,
+                color: scheme.secondary,
+              ),
+              StatCard(
+                label: 'Salidas de emergencia',
+                value: formatMoney(data.resumen.salidas),
+                caption: 'Gastos pagados del día',
+                icon: Icons.outbox,
                 color: scheme.tertiary,
               ),
               StatCard(
-                label: 'Resultado estimado',
-                value: formatMoney(data.resumen.resultado),
-                caption: 'Ventas − costo de insumos − salidas',
+                label: 'Ganancia',
+                value: formatMoney(data.resumen.ganancia),
+                caption: 'Ventas − gasto en insumos − salidas',
                 icon: Icons.insights,
-                color: data.resumen.resultado >= 0
-                    ? scheme.primary
-                    : scheme.error,
-              ),
-              StatCard(
-                label: 'Flujo de caja',
-                value: formatMoney(data.resumen.flujoCaja),
-                caption: 'Cobros − salidas',
-                icon: Icons.account_balance_outlined,
-                color: scheme.secondary,
+                color: data.resumen.ganancia >= 0 ? scheme.primary : scheme.error,
               ),
             ],
           )
@@ -519,11 +517,11 @@ class _DashboardPageState extends State<DashboardPage> {
                   strong: true,
                 ),
                 LabelValue(
-                  label: 'Costo de insumos vendidos (COGS)',
-                  value: formatMoney(resumen.cogs),
+                  label: 'Gasto en insumos',
+                  value: formatMoney(resumen.gastoInsumos),
                 ),
                 LabelValue(
-                  label: 'Salidas de caja',
+                  label: 'Salidas de emergencia',
                   value: formatMoney(resumen.salidas),
                 ),
                 LabelValue(
@@ -553,15 +551,15 @@ class _DashboardPageState extends State<DashboardPage> {
             children: [
               Expanded(
                 child: Text(
-                  'Resultado (ventas − COGS − salidas)',
+                  'Ganancia (ventas − gasto en insumos − salidas)',
                   style: TextStyle(color: scheme.onSurfaceVariant),
                 ),
               ),
               Text(
-                formatMoney(resumen.resultado),
+                formatMoney(resumen.ganancia),
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w800,
-                  color: resumen.resultado >= 0 ? scheme.primary : scheme.error,
+                  color: resumen.ganancia >= 0 ? scheme.primary : scheme.error,
                 ),
               ),
             ],

@@ -299,6 +299,20 @@ void main() {
       'Producto móvil',
     );
     await tester.pump();
+    // La categoría ya no viene por defecto: hay que elegirla.
+    final categorias = await tester.runAsync(repository.getCategorias);
+    final categoria = categorias!.firstWhere(
+      (item) => item.nombre == 'ALMUERZOS',
+    );
+    final dropdown = tester.widget<DropdownButtonFormField<int>>(
+      find.byType(DropdownButtonFormField<int>),
+    );
+    dropdown.onChanged!(categoria.id);
+    final campo = tester.state<FormFieldState<int>>(
+      find.byType(DropdownButtonFormField<int>),
+    );
+    campo.didChange(categoria.id);
+    await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, 'Guardar'));
     await asentar();
     final productos = await tester.runAsync(repository.getProductos);

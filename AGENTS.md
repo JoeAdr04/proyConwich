@@ -63,6 +63,9 @@ Flutter app (POS de restaurante "Sazón"). Paquete Dart: `test_code_02` — los 
 - `excel_exporter.dart` genera una hoja por tabla; excluye `password_hash` y el BLOB `imagen`.
 
 ## Convenciones / gotchas
+- **Regla: el sistema nunca depende de que los productos tengan receta.** Un `PREPARADO` sin
+  receta se vende igual (solo no descuenta insumos); `motivoNoDisponible` no lo bloquea y el
+  carrito/pedido se registran sin error.
 - Login por defecto sembrado: usuario `admin` / contraseña `1234` (hash SHA-256, `lib/core/password_utils.dart`).
 - Dinero en Bolivianos (`Bs`, `formatMoney`); entrada decimal con coma (`parseAmount`). Fechas como texto SQL
   vía `sqlDate`/`sqlDateTime` (`lib/core/date_utils.dart`).

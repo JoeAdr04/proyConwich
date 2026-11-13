@@ -33,32 +33,58 @@ class RestaurantApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xFF0F766E);
+    const seed = Color(0xFFC18A55);
     return MaterialApp(
       title: 'Sazón',
       debugShowCheckedModeBanner: false,
       scrollBehavior: const AppScrollBehavior(),
       theme: ThemeData(
         useMaterial3: true,
+        // Identidad visual ConWich: Espresso, Nogal, Caramelo, Dorado, Crema
+        // y Blanco cálido. Los colores semánticos (error, etc.) se conservan.
         colorScheme: ColorScheme.fromSeed(
           seedColor: seed,
           brightness: Brightness.light,
+        ).copyWith(
+          primary: const Color(0xFFC18A55), // Caramelo
+          onPrimary: const Color(0xFF2B1A12), // Texto oscuro
+          secondary: const Color(0xFF70452D), // Nogal
+          onSecondary: const Color(0xFFFFF9F0), // Blanco cálido
+          tertiary: const Color(0xFFC18A55), // Caramelo
+          onTertiary: const Color(0xFF2B1A12), // Texto oscuro
+          surface: const Color(0xFFFFF9F0), // Blanco cálido
+          onSurface: const Color(0xFF2B1A12), // Texto oscuro
+          onSurfaceVariant: const Color(0xFF574537), // Texto
+          outline: const Color(0xFF70452D), // Nogal
+          outlineVariant: const Color(0xFFE8C995), // Dorado
+          inverseSurface: const Color(0xFF3D2419), // Espresso
+          onInverseSurface: const Color(0xFFF3E9D9), // Crema
         ),
-        scaffoldBackgroundColor: const Color(0xFFF6F8F7),
+        scaffoldBackgroundColor: const Color(0xFFF3E9D9), // Crema
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF3D2419), // Espresso
+          surfaceTintColor: Color(0xFF3D2419),
+          foregroundColor: Color(0xFFF3E9D9), // Crema
+          iconTheme: IconThemeData(color: Color(0xFFF3E9D9)),
+        ),
+        drawerTheme: const DrawerThemeData(
+          backgroundColor: Color(0xFF3D2419), // Espresso
+          surfaceTintColor: Color(0xFF3D2419),
+        ),
         cardTheme: const CardThemeData(
-          color: Colors.white,
+          color: Color(0xFFFFF9F0), // Blanco cálido
           margin: EdgeInsets.zero,
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: Colors.white,
+          fillColor: const Color(0xFFFFF9F0), // Blanco cálido
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Color(0xFFE2E8E6)),
+            borderSide: const BorderSide(color: Color(0xFFE8C995)), // Dorado
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -82,6 +108,10 @@ class RestaurantApp extends StatelessWidget {
         navigationRailTheme: const NavigationRailThemeData(
           labelType: NavigationRailLabelType.none,
           groupAlignment: -0.9,
+          backgroundColor: Color(0xFF3D2419), // Espresso
+          indicatorColor: Color(0xFFC18A55), // Caramelo
+          selectedIconTheme: IconThemeData(color: Color(0xFFF3E9D9)),
+          unselectedIconTheme: IconThemeData(color: Color(0xFFE8C995)),
         ),
         dividerTheme: const DividerThemeData(space: 1),
       ),

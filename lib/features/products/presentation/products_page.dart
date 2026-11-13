@@ -542,21 +542,8 @@ class _ProductDialogState extends State<_ProductDialog> {
       text: producto == null ? '0' : producto.costoUnitario.toStringAsFixed(2),
     );
     _categorias = List.of(widget.categorias);
-    final activas = _categorias.where((categoria) => categoria.activo).toList();
-    int? categoriaPorDefecto;
-    for (final nombre in const ['Almuerzo', 'Plato suelto', 'Completo']) {
-      for (final categoria in activas) {
-        if (categoria.nombre.toLowerCase() == nombre.toLowerCase()) {
-          categoriaPorDefecto = categoria.id;
-          break;
-        }
-      }
-      if (categoriaPorDefecto != null) break;
-    }
-    _categoriaId =
-        producto?.categoriaId ??
-        categoriaPorDefecto ??
-        (activas.isEmpty ? null : activas.first.id);
+    // Sin categoría por defecto: el usuario siempre elige la categoría.
+    _categoriaId = producto?.categoriaId;
     _tipo = producto?.tipo ?? 'PREPARADO';
     _activo = producto?.activo ?? true;
     _imagen = producto?.imagen;
@@ -682,7 +669,7 @@ class _ProductDialogState extends State<_ProductDialog> {
     final vistaPrevia = Container(
       height: 130,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFFFF9F0), // Blanco cálido
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
@@ -902,7 +889,7 @@ class _ProductDialogState extends State<_ProductDialog> {
                   subtitle: Text(
                     directo
                         ? 'Los productos inactivos no se venden ni aparecen en el menú.'
-                        : 'Configura la receta desde la lista de productos.',
+                        : 'La receta es opcional: sirve para descontar insumos automáticamente.',
                   ),
                   value: _activo,
                   onChanged: (value) => setState(() => _activo = value),
@@ -992,7 +979,7 @@ class _NuevaCategoriaDialogState extends State<_NuevaCategoriaDialog> {
                 textCapitalization: TextCapitalization.characters,
                 decoration: appInput(
                   label: 'Nombre',
-                  hint: 'Ej. MASITAS, BEBIDAS, PLATO SUELTO',
+                  hint: 'Ej. SOPA, SEGUNDO, BEBIDAS',
                 ),
                 onChanged: (value) {
                   final upper = value.toUpperCase();

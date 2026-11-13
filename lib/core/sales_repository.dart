@@ -277,7 +277,7 @@ class SalesRepository {
           'cantidad': linea.cantidad,
           'precio_unitario': linea.precio,
           'subtotal': linea.subtotal,
-          'costo_unitario': linea.tipo == 'DIRECTO' ? linea.costoUnitario : 0,
+          'costo_unitario': linea.costoUnitario,
           'observacion': _limpiar(linea.observacion),
         });
         await _consumirReceta(
@@ -332,7 +332,7 @@ class SalesRepository {
           'cantidad': linea.cantidad,
           'precio_unitario': linea.precio,
           'subtotal': linea.subtotal,
-          'costo_unitario': linea.tipo == 'DIRECTO' ? linea.costoUnitario : 0,
+          'costo_unitario': linea.costoUnitario,
           'observacion': _limpiar(linea.observacion),
         });
         await _consumirReceta(

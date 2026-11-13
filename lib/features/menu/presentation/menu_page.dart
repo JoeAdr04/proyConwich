@@ -57,6 +57,8 @@ class _MenuPageState extends State<MenuPage> {
   late Future<_MenuData> _future;
   String _search = '';
   int? _categoriaId;
+  bool _editando = false;
+  bool _guardando = false;
 
   bool get _esAdmin => widget.usuario.puede(Permiso.menu);
 
@@ -125,7 +127,10 @@ class _MenuPageState extends State<MenuPage> {
       );
       await _crearConAnterior();
       if (!mounted) return;
-      setState(_reload);
+      setState(() {
+        _editando = true;
+        _reload();
+      });
       showAppMessage(
         context,
         previos.isEmpty
@@ -158,30 +163,45 @@ class _MenuPageState extends State<MenuPage> {
   }
 
   Future<void> _toggleProducto(_MenuData data, Producto producto) async {
-    if (!_esAdmin || producto.id == null) return;
+    if (!_esAdmin || producto.id == null || _guardando) return;
     if (data.menu?.cerrado == true) {
-      showAppMessage(context, 'El menú está cerrado.', error: true);
+      showAppMessage(
+        context,
+        'El menú está cerrado. Usa "Reabrir menú" para editarlo.',
+        error: true,
+      );
       return;
     }
-    final item = _itemDe(data.items, producto.id!);
+    setState(() => _guardando = true);
     try {
+      final menu = data.menu ?? await _crearConAnterior();
+      // Se consulta el estado real en la BD para que un doble toque rápido no
+      // deje el plato "pegado" en el menú.
+      final items = await _repository.getItems(menu.id);
+      final item = _itemDe(items, producto.id!);
       if (item != null) {
         await _repository.quitarItem(item.id);
         if (!mounted) return;
-        setState(_reload);
+        setState(() {
+          _guardando = false;
+          _reload();
+        });
         showAppMessage(
           context,
           '${producto.nombre} ya no está en el menú de hoy.',
         );
       } else {
-        final menu = data.menu ?? await _crearConAnterior();
         await _repository.agregarProducto(menu.id, producto.id!);
         if (!mounted) return;
-        setState(_reload);
+        setState(() {
+          _guardando = false;
+          _reload();
+        });
         showAppMessage(context, '${producto.nombre} agregado al menú de hoy.');
       }
     } catch (error) {
       if (!mounted) return;
+      setState(() => _guardando = false);
       showAppMessage(
         context,
         'No se pudo actualizar el menú: $error',
@@ -213,8 +233,11 @@ class _MenuPageState extends State<MenuPage> {
     }
     await _repository.habilitar(menu.id);
     if (!mounted) return;
-    setState(_reload);
-    showAppMessage(context, 'Menú habilitado. Ya se puede vender.');
+    setState(() {
+      _editando = false;
+      _reload();
+    });
+    showAppMessage(context, 'Menú abierto. Ya se puede vender.');
   }
 
   Future<void> _cerrar(_MenuData data) async {
@@ -232,6 +255,16 @@ class _MenuPageState extends State<MenuPage> {
     if (!mounted) return;
     setState(_reload);
     showAppMessage(context, 'Menú cerrado.');
+  }
+
+  /// Reabre un menú cerrado: vuelve a estar habilitado para editar y vender.
+  Future<void> _reabrir(_MenuData data) async {
+    final menu = data.menu;
+    if (menu == null) return;
+    await _repository.habilitar(menu.id);
+    if (!mounted) return;
+    setState(_reload);
+    showAppMessage(context, 'Menú reabierto. Ya se puede editar y vender.');
   }
 
   Future<void> _elegirFecha() async {
@@ -268,7 +301,8 @@ class _MenuPageState extends State<MenuPage> {
             children: [
               PageHeader(
                 title: 'Menú del día',
-                subtitle: 'Igual que en Ventas: toca un plato para quitarlo o volver a agregarlo.',
+                subtitle:
+                    'Pulsa "Editar" para elegir los platos del menú de hoy con un toque.',
                 actions: [
                   if (_esAdmin)
                     OutlinedButton.icon(
@@ -305,7 +339,26 @@ class _MenuPageState extends State<MenuPage> {
                 const SizedBox(height: 16),
                 _filtros(context, data),
                 const SizedBox(height: 16),
-                _catalogo(context, data),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final catalogo = _catalogo(context, data);
+                    final panel = _menuLateral(context, data);
+                    if (constraints.maxWidth >= 1100) {
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: catalogo),
+                          const SizedBox(width: 16),
+                          SizedBox(width: 300, child: panel),
+                        ],
+                      );
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [catalogo, const SizedBox(height: 16), panel],
+                    );
+                  },
+                ),
               ],
             ],
           ),
@@ -459,7 +512,6 @@ class _MenuPageState extends State<MenuPage> {
     final scheme = Theme.of(context).colorScheme;
     final menu = data.menu;
     final cerrado = menu?.cerrado == true;
-    final borrador = menu?.estado == 'BORRADOR';
     final habilitado = menu?.habilitado == true;
     return AppCard(
       child: Column(
@@ -488,8 +540,10 @@ class _MenuPageState extends State<MenuPage> {
           const SizedBox(height: 10),
           Text(
             cerrado
-                ? 'Menú cerrado. Solo consulta.'
-                : 'Toca un plato para agregarlo o quitarlo. Los platos con check verde están en el menú de hoy; los rojos están agotados y se reactivan con el control de la tarjeta.',
+                ? 'Menú cerrado. Pulsa "Reabrir menú" para editarlo o seguir vendiendo.'
+                : _editando
+                ? 'Modo edición: toca un plato para agregarlo o quitarlo del menú de hoy.'
+                : 'Pulsa "Editar" para agregar o quitar platos. Los platos con check verde están en el menú de hoy; los rojos están agotados.',
             style: TextStyle(color: scheme.onSurfaceVariant),
           ),
           if (_esAdmin) ...[
@@ -504,13 +558,25 @@ class _MenuPageState extends State<MenuPage> {
                     icon: const Icon(Icons.history),
                     label: const Text('Crear menú con los platos de ayer'),
                   ),
-                if (borrador)
-                  FilledButton.icon(
-                    onPressed: () => _habilitar(data),
-                    icon: const Icon(Icons.task_alt),
-                    label: const Text('Habilitar'),
+                if (menu != null && !cerrado)
+                  FilledButton.tonalIcon(
+                    onPressed: () => _agregarAlmuerzoCompleto(data),
+                    icon: const Icon(Icons.dinner_dining),
+                    label: const Text('Agregar almuerzo completo'),
                   ),
-                if (menu != null && !cerrado && data.items.isNotEmpty)
+                if (menu != null && !cerrado && !_editando)
+                  OutlinedButton.icon(
+                    onPressed: () => setState(() => _editando = true),
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('Editar'),
+                  ),
+                if (habilitado && _editando)
+                  OutlinedButton.icon(
+                    onPressed: () => setState(() => _editando = false),
+                    icon: const Icon(Icons.done_all_outlined),
+                    label: const Text('Listo'),
+                  ),
+                if (_editando && !cerrado && data.items.isNotEmpty)
                   OutlinedButton.icon(
                     onPressed: () => _limpiar(data),
                     icon: const Icon(Icons.delete_sweep_outlined),
@@ -641,6 +707,229 @@ class _MenuPageState extends State<MenuPage> {
   int _compararProductos(Producto a, Producto b) =>
       a.nombre.toLowerCase().compareTo(b.nombre.toLowerCase());
 
+  /// Lista lateral con los platos elegidos hoy (foto · producto · precio) y el
+  /// botón para abrir el menú.
+  Widget _menuLateral(BuildContext context, _MenuData data) {
+    final scheme = Theme.of(context).colorScheme;
+    final menu = data.menu;
+    final habilitado = menu?.habilitado == true;
+    final cerrado = menu?.cerrado == true;
+    final borrador = menu == null || menu.estado == 'BORRADOR';
+    final productosPorId = {
+      for (final producto in data.productos) producto.id: producto,
+    };
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.receipt_long, color: scheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'MENÚ DE HOY',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ),
+              Text(
+                '${data.items.length}',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: scheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (data.items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                'Aún no has elegido platos.\nToca un plato o usa "Agregar almuerzo completo".',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+            )
+          else
+            for (final item in data.items)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: _miniatura(productosPorId[item.productoId]),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.nombre,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          if (!item.disponible)
+                            Text(
+                              item.motivoAgotado ?? 'Agotado',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: scheme.error),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      formatMoney(item.precio),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          const SizedBox(height: 12),
+          if (menu == null)
+            FilledButton.icon(
+              onPressed: () => _crearMenu(),
+              icon: const Icon(Icons.history),
+              label: const Text('Crear menú con los platos de ayer'),
+            )
+          else if (borrador)
+            FilledButton.icon(
+              onPressed: () => _habilitar(data),
+              icon: const Icon(Icons.lock_open_outlined),
+              label: const Text('Abrir menú'),
+            )
+          else if (habilitado)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.green.shade700.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green.shade700),
+                  const SizedBox(width: 8),
+                  Text(
+                    'MENÚ ABIERTO',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.1,
+                      color: Colors.green.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (cerrado)
+            FilledButton.icon(
+              onPressed: () => _reabrir(data),
+              icon: const Icon(Icons.lock_open_outlined),
+              label: const Text('Reabrir menú'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniatura(Producto? producto) {
+    if (producto == null) {
+      return Container(
+        color: const Color(0xFFF3E9D9), // Crema
+        child: const Icon(Icons.restaurant, size: 20),
+      );
+    }
+    if (producto.imagen != null) {
+      return Image.memory(
+        producto.imagen!,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+      );
+    }
+    return Container(
+      color: Color(producto.categoriaColor).withValues(alpha: 0.15),
+      child: Icon(
+        producto.esDirecto ? Icons.local_drink_outlined : Icons.restaurant,
+        size: 20,
+        color: Color(producto.categoriaColor),
+      ),
+    );
+  }
+
+  /// Atajo para elegir el almuerzo del día: una sopa y/o un segundo.
+  Future<void> _agregarAlmuerzoCompleto(_MenuData data) async {
+    int? categoriaId(String nombre) {
+      for (final categoria in data.categorias) {
+        if (categoria.nombre.trim().toUpperCase() == nombre) {
+          return categoria.id;
+        }
+      }
+      return null;
+    }
+
+    final sopaId = categoriaId('SOPA');
+    final segundoId = categoriaId('SEGUNDO');
+    if (sopaId == null && segundoId == null) {
+      showAppMessage(
+        context,
+        'Crea las categorías SOPA y SEGUNDO en el módulo de Productos.',
+        error: true,
+      );
+      return;
+    }
+    final enMenu = data.items.map((item) => item.productoId).toSet();
+    final sopas = data.productos
+        .where(
+          (producto) =>
+              producto.categoriaId == sopaId &&
+              !enMenu.contains(producto.id),
+        )
+        .toList()
+      ..sort(_compararProductos);
+    final segundos = data.productos
+        .where(
+          (producto) =>
+              producto.categoriaId == segundoId &&
+              !enMenu.contains(producto.id),
+        )
+        .toList()
+      ..sort(_compararProductos);
+    final seleccion = await showDialog<List<int>>(
+      context: context,
+      builder: (_) => _AlmuerzoCompletoDialog(sopas: sopas, segundos: segundos),
+    );
+    if (seleccion == null || seleccion.isEmpty) return;
+    try {
+      final menu = data.menu ?? await _crearConAnterior();
+      for (final productoId in seleccion) {
+        await _repository.agregarProducto(menu.id, productoId);
+      }
+      if (!mounted) return;
+      setState(_reload);
+      showAppMessage(
+        context,
+        '${seleccion.length} plato(s) agregado(s) al menú de hoy.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      showAppMessage(context, 'No se pudo agregar: $error', error: true);
+    }
+  }
+
   Widget _gridProductos(
     BuildContext context,
     _MenuData data,
@@ -681,15 +970,36 @@ class _MenuPageState extends State<MenuPage> {
     final cerrado = data.menu?.cerrado == true;
     final agotado = item != null && !item.disponible;
     final seleccionado = item != null && !agotado;
-    // El plato agotado queda bloqueado: se reactiva con el control de la tarjeta.
-    final editable = _esAdmin && !cerrado && !directo && !agotado;
     final mensaje = directo
         ? 'Siempre disponible'
         : item == null
-        ? 'Toca para agregar'
+        ? (_editando ? 'Toca para agregar' : 'No está en el menú de hoy')
         : agotado
         ? (item.motivoAgotado ?? 'Agotado')
-        : 'En el menú de hoy · toca para quitar';
+        : _editando
+        ? 'En el menú de hoy · toca para quitar'
+        : 'En el menú de hoy';
+
+    // Cada toque deja un mensaje claro; fuera de modo edición nada cambia.
+    VoidCallback? onTap;
+    if (_esAdmin && !directo) {
+      if (agotado) {
+        onTap = () => showAppMessage(
+          context,
+          '${producto.nombre} está agotado. Reactívalo con el control de la tarjeta.',
+        );
+      } else if (cerrado) {
+        onTap = () => showAppMessage(
+          context,
+          'El menú está cerrado. Usa "Reabrir menú" para editarlo.',
+        );
+      } else if (_editando) {
+        onTap = () => _toggleProducto(data, producto);
+      } else {
+        onTap = () =>
+            showAppMessage(context, 'Pulsa "Editar" para modificar el menú.');
+      }
+    }
 
     return ProductoCatalogoCard(
       nombre: producto.nombre,
@@ -703,7 +1013,7 @@ class _MenuPageState extends State<MenuPage> {
       seleccionado: seleccionado,
       agotado: agotado,
       mensaje: mensaje,
-      onTap: editable ? () => _toggleProducto(data, producto) : null,
+      onTap: onTap,
       accion: item != null && !directo && _esAdmin && !cerrado
           ? IconButton(
               tooltip: item.disponible ? 'Marcar agotado' : 'Marcar disponible',
@@ -715,6 +1025,201 @@ class _MenuPageState extends State<MenuPage> {
               ),
             )
           : null,
+    );
+  }
+}
+
+/// Popup para elegir el almuerzo del día: una sopa y/o un segundo.
+class _AlmuerzoCompletoDialog extends StatefulWidget {
+  const _AlmuerzoCompletoDialog({required this.sopas, required this.segundos});
+
+  final List<Producto> sopas;
+  final List<Producto> segundos;
+
+  @override
+  State<_AlmuerzoCompletoDialog> createState() =>
+      _AlmuerzoCompletoDialogState();
+}
+
+class _AlmuerzoCompletoDialogState extends State<_AlmuerzoCompletoDialog> {
+  final _seleccionados = <int>{};
+  String _buscarSopa = '';
+  String _buscarSegundo = '';
+
+  void _alternar(Producto producto) {
+    setState(() {
+      if (!_seleccionados.remove(producto.id)) {
+        _seleccionados.add(producto.id!);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: const Text('Agregar almuerzo completo'),
+      content: SizedBox(
+        width: 560,
+        height: 500,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _seccion(
+                context,
+                titulo: 'SOPA',
+                hint: 'Buscar sopa',
+                vacio: 'No hay sopas disponibles para agregar.',
+                productos: widget.sopas,
+                busqueda: _buscarSopa,
+                onBuscar: (valor) => setState(() => _buscarSopa = valor),
+              ),
+              const SizedBox(height: 18),
+              _seccion(
+                context,
+                titulo: 'SEGUNDO',
+                hint: 'Buscar segundo suelto',
+                vacio: 'No hay segundos disponibles para agregar.',
+                productos: widget.segundos,
+                busqueda: _buscarSegundo,
+                onBuscar: (valor) => setState(() => _buscarSegundo = valor),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Toca un plato para elegirlo y pulsa "Listo".',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _seleccionados.isEmpty
+              ? null
+              : () => Navigator.pop(context, _seleccionados.toList()),
+          child: Text('Listo (${_seleccionados.length})'),
+        ),
+      ],
+    );
+  }
+
+  Widget _seccion(
+    BuildContext context, {
+    required String titulo,
+    required String hint,
+    required String vacio,
+    required List<Producto> productos,
+    required String busqueda,
+    required ValueChanged<String> onBuscar,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final termino = busqueda.trim().toLowerCase();
+    final filtrados = productos
+        .where(
+          (producto) =>
+              termino.isEmpty ||
+              producto.nombre.toLowerCase().contains(termino),
+        )
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          titulo,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.1,
+            color: scheme.primary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          decoration: appInput(label: hint, icon: Icons.search),
+          onChanged: onBuscar,
+        ),
+        const SizedBox(height: 8),
+        if (filtrados.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(vacio, style: TextStyle(color: scheme.onSurfaceVariant)),
+          )
+        else
+          for (final producto in filtrados) _fila(context, producto),
+      ],
+    );
+  }
+
+  Widget _fila(BuildContext context, Producto producto) {
+    final scheme = Theme.of(context).colorScheme;
+    final seleccionado = _seleccionados.contains(producto.id);
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => _alternar(producto),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: 42,
+                height: 42,
+                child: producto.imagen != null
+                    ? Image.memory(
+                        producto.imagen!,
+                        fit: BoxFit.cover,
+                        gaplessPlayback: true,
+                      )
+                    : Container(
+                        color: Color(
+                          producto.categoriaColor,
+                        ).withValues(alpha: 0.15),
+                        child: Icon(
+                          Icons.restaurant,
+                          size: 20,
+                          color: Color(producto.categoriaColor),
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    producto.nombre,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    formatMoney(producto.precio),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              seleccionado ? Icons.check_circle : Icons.add_circle_outline,
+              color: seleccionado ? Colors.green.shade700 : scheme.primary,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

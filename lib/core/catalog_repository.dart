@@ -312,7 +312,7 @@ class CatalogRepository {
       'imagen': producto.imagen,
       'tipo': producto.tipo,
       'stock_minimo': producto.esDirecto ? producto.stockMinimo : 0,
-      'costo_unitario': producto.esDirecto ? producto.costoUnitario : 0,
+      'costo_unitario': producto.costoUnitario,
       'activo': producto.activo ? 1 : 0,
     };
     if (producto.id == null) {
@@ -650,8 +650,9 @@ class CatalogRepository {
       }
       return null;
     }
+    // Un producto sin receta se vende igual: simplemente no controla insumos.
+    // El sistema nunca depende de que el producto tenga receta.
     final receta = await getReceta(productoId);
-    if (receta.isEmpty) return 'Sin receta configurada';
     for (final linea in receta) {
       if (linea.stock < linea.cantidad * cantidad) {
         return 'Falta ${linea.insumoNombre}';

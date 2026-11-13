@@ -114,7 +114,7 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                             child: const Icon(
                               Icons.restaurant_menu,
-                              color: Colors.white,
+                              color: Color(0xFF2B1A12), // Texto oscuro
                               size: 30,
                             ),
                           ),

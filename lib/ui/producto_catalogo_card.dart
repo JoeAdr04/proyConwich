@@ -71,7 +71,7 @@ class ProductoCatalogoCard extends StatelessWidget {
       child: Material(
         color: agotado
             ? scheme.errorContainer.withValues(alpha: 0.25)
-            : Colors.white,
+            : const Color(0xFFFFF9F0), // Blanco cálido
         borderRadius: BorderRadius.circular(18),
         child: InkWell(
           onTap: onTap,
