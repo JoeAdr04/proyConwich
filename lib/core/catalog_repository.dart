@@ -648,16 +648,25 @@ class CatalogRepository {
       if (producto.stock < cantidad) {
         return 'Sin stock (quedan ${producto.stock.toStringAsFixed(0)})';
       }
-      return null;
     }
+    // Los productos con receta no se bloquean por falta de insumos: la receta
+    // solo controla el consumo y el faltante se registra al vender.
+    return null;
+  }
+
+  /// Aviso no bloqueante cuando un producto con receta no tiene insumos
+  /// suficientes. Los productos sin receta no generan advertencias.
+  Future<String?> advertenciaInsumos(int productoId, double cantidad) async {
     final receta = await getReceta(productoId);
-    if (receta.isEmpty) return 'Sin receta configurada';
+    if (receta.isEmpty) return null;
+    final faltantes = <String>[];
     for (final linea in receta) {
       if (linea.stock < linea.cantidad * cantidad) {
-        return 'Falta ${linea.insumoNombre}';
+        faltantes.add(linea.insumoNombre);
       }
     }
-    return null;
+    if (faltantes.isEmpty) return null;
+    return 'Faltan insumos: ${faltantes.join(', ')}';
   }
 
   /// Fija el stock real de un insumo guardando la diferencia como ajuste.

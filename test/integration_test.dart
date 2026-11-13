@@ -1214,4 +1214,177 @@ void main() {
       reason: 'La base de datos debe rechazar el estado PUBLICADO.',
     );
   });
+
+  test('venta con receta e insumos insuficientes registra faltante', () async {
+    final auth = AuthRepository();
+    final admin = (await auth.login('admin', '1234'))!;
+    final catalog = CatalogRepository();
+    await catalog.saveCategoria(
+      const CategoriaProducto(
+        nombre: 'FALTANTES',
+        color: 0xFF2563EB,
+        siempreDisponible: false,
+        orden: 1,
+        activo: true,
+      ),
+    );
+    final categoria = (await catalog.getCategorias()).firstWhere(
+      (item) => item.nombre == 'FALTANTES',
+    );
+    final unidad = (await catalog.getUnidades()).firstWhere(
+      (item) => item.abreviatura == 'und',
+    );
+    final insumoId = await catalog.saveInsumo(
+      Insumo(
+        nombre: 'Insumo faltante',
+        unidadId: unidad.id,
+        unidadAbreviatura: unidad.abreviatura,
+        stockMinimo: 0,
+        costoPromedio: 4,
+        activo: true,
+        stock: 0,
+      ),
+    );
+    await catalog.ajustarStockInsumo(
+      insumoId: insumoId,
+      nuevoStock: 2,
+      usuarioId: admin.id,
+      motivo: 'Carga inicial',
+    );
+    final productoId = await catalog.saveProducto(
+      Producto(
+        nombre: 'Plato con receta',
+        categoriaId: categoria.id!,
+        categoriaNombre: categoria.nombre,
+        categoriaColor: categoria.color,
+        precio: 10,
+        tipo: 'PREPARADO',
+        stockMinimo: 0,
+        costoUnitario: 0,
+        activo: true,
+        stock: 0,
+      ),
+    );
+    await catalog.saveRecetaCantidades(productoId, {insumoId: 5});
+
+    expect(await catalog.motivoNoDisponible(productoId, 1), isNull);
+    expect(
+      await catalog.advertenciaInsumos(productoId, 1),
+      contains('Insumo faltante'),
+    );
+
+    final cash = CashRepository();
+    final caja = await cash.abrirCaja(
+      fecha: DateTime.now(),
+      fondoInicial: 0,
+      usuarioId: admin.id,
+    );
+    final sales = SalesRepository();
+    final pedidoId = await sales.crearPedido(
+      usuarioId: admin.id,
+      cajaId: caja.id,
+      referencia: 'Mesa faltante',
+      lineas: [
+        CartLine(
+          productoId: productoId,
+          nombre: 'Plato con receta',
+          precio: 10,
+          cantidad: 1,
+          tipo: 'PREPARADO',
+        ),
+      ],
+      pagos: const [PagoInput(metodo: 'EFECTIVO', monto: 10)],
+    );
+
+    expect(await catalog.getStockInsumo(insumoId), 0);
+    final db = await AppDatabase.instance.database;
+    final consumos = await db.query('consumos_insumo');
+    expect(consumos.length, 1);
+    expect((consumos.first['cantidad'] as num).toDouble(), 2);
+
+    final faltantes = await db.query('faltantes_insumo');
+    expect(faltantes.length, 1);
+    expect((faltantes.first['cantidad_requerida'] as num).toDouble(), 5);
+    expect((faltantes.first['cantidad_disponible'] as num).toDouble(), 2);
+    expect((faltantes.first['cantidad_consumida'] as num).toDouble(), 2);
+    expect((faltantes.first['cantidad_faltante'] as num).toDouble(), 3);
+    expect(faltantes.first['estado'], 'CONFIRMADO');
+
+    final ahora = DateTime.now();
+    final inicio = DateTime(ahora.year, ahora.month, ahora.day);
+    final reporte = await ReportRepository().getFaltantes(
+      inicio,
+      inicio.add(const Duration(days: 1)),
+    );
+    expect(reporte.length, 1);
+    expect(reporte.first.producto, 'Plato con receta');
+    expect(reporte.first.insumo, 'Insumo faltante');
+    expect(reporte.first.faltante, 3);
+
+    await sales.anularPedido(pedidoId);
+    expect(await catalog.getStockInsumo(insumoId), 2);
+    final faltanteAnulado = await db.query('faltantes_insumo');
+    expect(faltanteAnulado.first['estado'], 'ANULADO');
+  });
+
+  test('producto sin receta se vende sin consumos ni faltantes', () async {
+    final auth = AuthRepository();
+    final admin = (await auth.login('admin', '1234'))!;
+    final catalog = CatalogRepository();
+    await catalog.saveCategoria(
+      const CategoriaProducto(
+        nombre: 'SIN RECETA',
+        color: 0xFF0F766E,
+        siempreDisponible: false,
+        orden: 1,
+        activo: true,
+      ),
+    );
+    final categoria = (await catalog.getCategorias()).firstWhere(
+      (item) => item.nombre == 'SIN RECETA',
+    );
+    final productoId = await catalog.saveProducto(
+      Producto(
+        nombre: 'Producto independiente',
+        categoriaId: categoria.id!,
+        categoriaNombre: categoria.nombre,
+        categoriaColor: categoria.color,
+        precio: 8,
+        tipo: 'PREPARADO',
+        stockMinimo: 0,
+        costoUnitario: 0,
+        activo: true,
+        stock: 0,
+      ),
+    );
+
+    expect(await catalog.motivoNoDisponible(productoId, 1), isNull);
+    expect(await catalog.advertenciaInsumos(productoId, 1), isNull);
+
+    final cash = CashRepository();
+    final caja = await cash.abrirCaja(
+      fecha: DateTime.now(),
+      fondoInicial: 0,
+      usuarioId: admin.id,
+    );
+    final sales = SalesRepository();
+    await sales.crearPedido(
+      usuarioId: admin.id,
+      cajaId: caja.id,
+      lineas: [
+        CartLine(
+          productoId: productoId,
+          nombre: 'Producto independiente',
+          precio: 8,
+          cantidad: 1,
+          tipo: 'PREPARADO',
+        ),
+      ],
+      pagos: const [PagoInput(metodo: 'EFECTIVO', monto: 8)],
+    );
+
+    final db = await AppDatabase.instance.database;
+    expect(await db.query('consumos_insumo'), isEmpty);
+    expect(await db.query('faltantes_insumo'), isEmpty);
+  });
 }

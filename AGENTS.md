@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Flutter app (POS de restaurante "Sazón"). Paquete Dart: `test_code_02` — los imports usan
+Flutter app (POS de restaurante "Conwich"). Paquete Dart: `test_code_02` — los imports usan
 `package:test_code_02/...`, NO el nombre de la app.
 
 ## Comandos
@@ -15,8 +15,9 @@ Flutter app (POS de restaurante "Sazón"). Paquete Dart: `test_code_02` — los 
 - Android: `applicationId`/namespace `com.example.test_code_02`, Java/Kotlin 17,
   minSdk/targetSdk/compileSdk toman los defaults de Flutter. Gradle wrapper 9.3.1, AGP 9.1.0,
   Kotlin 2.4.0. El release firma con las debug keys (sin keystore propio). versionName/versionCode
-  salen de `pubspec.yaml` (1.0.0+1).
-- iOS: bundle id `com.example.testCode02`. Web: `<title>` = `test_code_02`.
+  salen de `pubspec.yaml` (1.0.0+1). El canal "Beta 1" es solo una etiqueta visual en
+  `lib/core/app_info.dart`; no forma parte de la versión para iOS.
+- iOS: bundle id `com.example.testCode02`, display name `Conwich`. Web: `<title>` = `Conwich`.
 
 ## Arquitectura
 - Sin gestor de estado: `setState` + singletons (`Sesion.instance`). Las páginas usan repositorios directamente.
@@ -27,11 +28,13 @@ Flutter app (POS de restaurante "Sazón"). Paquete Dart: `test_code_02` — los 
 
 ## Base de datos (SQLite / sqflite)
 - `lib/data/database/app_database.dart` — singleton `AppDatabase.instance`, schema versionado a mano.
-- `version: 10` (`AppDatabase.schemaVersion`); DB file `sazon_restaurante_v2.db`. Las claves
+- `version: 11` (`AppDatabase.schemaVersion`); DB file `sazon_restaurante_v2.db`. Las claves
   foráneas se desactivan durante la migración y se activan en `onOpen` (`PRAGMA foreign_keys = ON`).
 - Para cambiar schema: subir `version`, añadir `onUpgrade`. Las vistas `v_stock_insumos` y
   `v_stock_productos` se dropean y recrean en cada upgrade (ya se hace en `_createSchema`).
 - `unidades_medida.familia`/`factor_base` permiten convertir L↔ml y kg↔g en las recetas.
+- La receta es opcional. Al vender, el consumo se limita al stock disponible (nunca deja
+  negativos) y el faltante queda registrado en `faltantes_insumo` (se consulta en Reportes).
 - `insumos.venta_directa` genera/actualiza un producto vinculado (`producto_id`) con receta de
   1 unidad; su categoría queda `siempre_disponible = 1`. Los productos `DIRECTO` viejos se
   migran automáticamente a insumo + receta al subir a v7 y el stock actual se conserva.
@@ -60,6 +63,10 @@ Flutter app (POS de restaurante "Sazón"). Paquete Dart: `test_code_02` — los 
 - Flujo: `AppDatabase.instance.close()` → copiar el `.db` → validar cabecera `SQLite format 3\0`.
   Restaurar reemplaza todo, guarda antes una copia en `<documentos>/respaldos_seguridad/` (máx. 5)
   y revierte si `PRAGMA integrity_check` falla.
+- Las copias nuevas se llaman `conwich_respaldo_<fecha>.db` y
+  `conwich_seguridad_<fecha>.db`; el formato de fecha no cambia. La compatibilidad al restaurar
+  depende de `schemaVersion`, no del nombre del archivo. El `.db` de trabajo sigue siendo
+  `sazon_restaurante_v2.db`.
 - `excel_exporter.dart` genera una hoja por tabla; excluye `password_hash` y el BLOB `imagen`.
 
 ## Convenciones / gotchas

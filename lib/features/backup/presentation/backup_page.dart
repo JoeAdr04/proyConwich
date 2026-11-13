@@ -202,9 +202,7 @@ class _BackupPageState extends State<BackupPage> {
   Future<bool> _confirmarRestauracion(InspeccionCopia inspeccion) async {
     final actual = _meta?['instalacion_id'] as String?;
     final otraInstalacion = !inspeccion.esMismaInstalacion(actual);
-    final compatible = inspeccion.versionCompatible(
-      AppDatabase.schemaVersion,
-    );
+    final compatible = inspeccion.versionCompatible(AppDatabase.schemaVersion);
     final resultado = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -223,10 +221,7 @@ class _BackupPageState extends State<BackupPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _Dato(
-                    'Archivo',
-                    inspeccion.nombreArchivo,
-                  ),
+                  _Dato('Archivo', inspeccion.nombreArchivo),
                   _Dato(
                     'Fecha del respaldo',
                     inspeccion.fechaRespaldo != null
@@ -246,7 +241,7 @@ class _BackupPageState extends State<BackupPage> {
                     'Generada por',
                     inspeccion.appVersion == null
                         ? '—'
-                        : 'Sazón ${inspeccion.appVersion}',
+                        : 'Conwich ${inspeccion.appVersion}',
                   ),
                   _Dato(
                     'Esquema',
@@ -293,9 +288,8 @@ class _BackupPageState extends State<BackupPage> {
                           : 'Se reemplazará TODA la información actual (ventas, '
                                 'productos, usuarios y caja). Antes se guardará '
                                 'automáticamente una copia de seguridad.',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: scheme.error),
+                      style: Theme.of(context).textTheme.bodySmall
+                          ?.copyWith(color: scheme.error),
                     ),
                   ),
                 ],
@@ -308,12 +302,8 @@ class _BackupPageState extends State<BackupPage> {
               child: const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: bloqueado
-                  ? null
-                  : () => Navigator.pop(context, true),
-              style: FilledButton.styleFrom(
-                backgroundColor: scheme.error,
-              ),
+              onPressed: bloqueado ? null : () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(backgroundColor: scheme.error),
               child: const Text('Restaurar'),
             ),
           ],
@@ -327,9 +317,7 @@ class _BackupPageState extends State<BackupPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final id = _meta?['instalacion_id'] as String?;
-    final ultimo = parseSqlDateTime(
-      _meta?['ultimo_respaldo_en'] as String?,
-    );
+    final ultimo = parseSqlDateTime(_meta?['ultimo_respaldo_en'] as String?);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Respaldo y restauración'),
@@ -359,10 +347,7 @@ class _BackupPageState extends State<BackupPage> {
                 ),
                 if (_error != null) ...[
                   AppCard(
-                    child: Text(
-                      _error!,
-                      style: TextStyle(color: scheme.error),
-                    ),
+                    child: Text(_error!, style: TextStyle(color: scheme.error)),
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -385,9 +370,8 @@ class _BackupPageState extends State<BackupPage> {
                       Text(
                         'Copia exacta y restaurable. Incluye ventas, '
                         'inventario y usuarios.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: scheme.onSurfaceVariant),
                       ),
                       const SizedBox(height: 12),
                       _Dato(
@@ -396,10 +380,7 @@ class _BackupPageState extends State<BackupPage> {
                             ? 'Todavía no se generó ninguna'
                             : formatDateTimeShort(ultimo),
                       ),
-                      _Dato(
-                        'Instalación',
-                        id == null || id.isEmpty ? '—' : id,
-                      ),
+                      _Dato('Instalación', id == null || id.isEmpty ? '—' : id),
                       const SizedBox(height: 12),
                       if (!_service.disponible)
                         Container(
@@ -464,9 +445,8 @@ class _BackupPageState extends State<BackupPage> {
                       Text(
                         'Antes de aplicar nada se muestra la fecha, la versión '
                         'y el contenido del archivo.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: scheme.onSurfaceVariant),
                       ),
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
@@ -502,9 +482,8 @@ class _BackupPageState extends State<BackupPage> {
                       Text(
                         'Un archivo con una hoja por tabla para revisar o '
                         'llevar a contabilidad. No sirve para restaurar.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: scheme.onSurfaceVariant),
                       ),
                       const SizedBox(height: 12),
                       Wrap(
@@ -537,10 +516,7 @@ class _BackupPageState extends State<BackupPage> {
                     children: [
                       Row(
                         children: [
-                          Icon(
-                            Icons.history_outlined,
-                            color: scheme.primary,
-                          ),
+                          Icon(Icons.history_outlined, color: scheme.primary),
                           const SizedBox(width: 8),
                           Text(
                             'Copias de seguridad automáticas',
@@ -553,9 +529,8 @@ class _BackupPageState extends State<BackupPage> {
                       Text(
                         'Se guardan antes de cada restauración. Se conservan '
                         'las 5 más recientes.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: scheme.onSurfaceVariant),
                       ),
                       if (_copias.isEmpty)
                         const Padding(
@@ -612,18 +587,15 @@ class _Dato extends StatelessWidget {
             width: 120,
             child: Text(
               etiqueta,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: scheme.onSurfaceVariant),
             ),
           ),
           Expanded(
             child: Text(
               valor,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: color,
-              ),
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(fontWeight: FontWeight.w600, color: color),
             ),
           ),
         ],

@@ -103,6 +103,34 @@ class InventarioReporte {
   double get valor => stock * costoUnitario;
 }
 
+class FaltanteInsumoReporte {
+  const FaltanteInsumoReporte({
+    required this.fecha,
+    required this.referencia,
+    required this.producto,
+    required this.insumo,
+    required this.unidad,
+    required this.requerido,
+    required this.disponible,
+    required this.consumido,
+    required this.faltante,
+    required this.costoUnitario,
+  });
+
+  final DateTime fecha;
+  final String? referencia;
+  final String producto;
+  final String insumo;
+  final String unidad;
+  final double requerido;
+  final double disponible;
+  final double consumido;
+  final double faltante;
+  final double costoUnitario;
+
+  double get costoFaltante => faltante * costoUnitario;
+}
+
 class ReportRepository {
   Future<ResumenFinanciero> getResumen(DateTime desde, DateTime hasta) async {
     final db = await AppDatabase.instance.database;
@@ -339,5 +367,46 @@ class ReportRepository {
   Future<List<InventarioReporte>> getAlertasStock() async {
     final inventario = await getInventario();
     return inventario.where((item) => item.alerta).toList();
+  }
+
+  Future<List<FaltanteInsumoReporte>> getFaltantes(
+    DateTime desde,
+    DateTime hasta,
+  ) async {
+    final db = await AppDatabase.instance.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT f.fecha, pe.referencia, p.nombre AS producto,
+             i.nombre AS insumo, u.abreviatura AS unidad,
+             f.cantidad_requerida, f.cantidad_disponible,
+             f.cantidad_consumida, f.cantidad_faltante, f.costo_unitario
+      FROM faltantes_insumo f
+      INNER JOIN productos p ON p.id = f.producto_id
+      INNER JOIN insumos i ON i.id = f.insumo_id
+      INNER JOIN unidades_medida u ON u.id = i.unidad_id
+      LEFT JOIN pedidos pe ON pe.id = f.pedido_id
+      WHERE f.estado = 'CONFIRMADO'
+        AND f.fecha >= ? AND f.fecha < ?
+      ORDER BY f.fecha DESC, f.id DESC
+    ''',
+      [sqlDateTime(desde), sqlDateTime(hasta)],
+    );
+    return rows
+        .map(
+          (row) => FaltanteInsumoReporte(
+            fecha:
+                DateTime.tryParse(row['fecha']! as String) ?? DateTime.now(),
+            referencia: row['referencia'] as String?,
+            producto: row['producto']! as String,
+            insumo: row['insumo']! as String,
+            unidad: row['unidad']! as String,
+            requerido: (row['cantidad_requerida'] as num).toDouble(),
+            disponible: (row['cantidad_disponible'] as num).toDouble(),
+            consumido: (row['cantidad_consumida'] as num).toDouble(),
+            faltante: (row['cantidad_faltante'] as num).toDouble(),
+            costoUnitario: (row['costo_unitario'] as num).toDouble(),
+          ),
+        )
+        .toList();
   }
 }

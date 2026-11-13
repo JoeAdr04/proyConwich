@@ -16,7 +16,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   /// Versión de esquema actual. Subir junto con `onUpgrade`.
-  static const int schemaVersion = 10;
+  static const int schemaVersion = 11;
 
   static const String nombreArchivo = 'sazon_restaurante_v2.db';
 
@@ -176,7 +176,7 @@ class AppDatabase {
       CREATE TABLE IF NOT EXISTS app_meta (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         instalacion_id TEXT NOT NULL,
-        nombre_negocio TEXT NOT NULL DEFAULT 'Sazón',
+        nombre_negocio TEXT NOT NULL DEFAULT 'Conwich',
         ultimo_respaldo_en TEXT,
         ultimo_respaldo_app TEXT,
         ultimo_respaldo_motivo TEXT
@@ -423,6 +423,28 @@ class AppDatabase {
         FOREIGN KEY (insumo_id) REFERENCES insumos(id),
         FOREIGN KEY (pedido_id) REFERENCES pedidos(id),
         FOREIGN KEY (detalle_pedido_id) REFERENCES detalle_pedido(id)
+      )
+    ''');
+
+    batch.execute('''
+      CREATE TABLE IF NOT EXISTS faltantes_insumo (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fecha TEXT NOT NULL,
+        pedido_id INTEGER,
+        detalle_pedido_id INTEGER,
+        producto_id INTEGER NOT NULL,
+        insumo_id INTEGER NOT NULL,
+        cantidad_requerida REAL NOT NULL,
+        cantidad_disponible REAL NOT NULL,
+        cantidad_consumida REAL NOT NULL,
+        cantidad_faltante REAL NOT NULL,
+        costo_unitario REAL NOT NULL DEFAULT 0,
+        estado TEXT NOT NULL DEFAULT 'CONFIRMADO'
+          CHECK (estado IN ('CONFIRMADO','ANULADO')),
+        FOREIGN KEY (pedido_id) REFERENCES pedidos(id),
+        FOREIGN KEY (detalle_pedido_id) REFERENCES detalle_pedido(id),
+        FOREIGN KEY (producto_id) REFERENCES productos(id),
+        FOREIGN KEY (insumo_id) REFERENCES insumos(id)
       )
     ''');
 
@@ -1090,7 +1112,7 @@ class AppDatabase {
     await db.insert('app_meta', {
       'id': 1,
       'instalacion_id': _nuevoInstalacionId(),
-      'nombre_negocio': 'Sazón',
+      'nombre_negocio': 'Conwich',
     });
   }
 

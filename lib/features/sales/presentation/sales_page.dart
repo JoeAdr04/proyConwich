@@ -24,6 +24,7 @@ class _SaleProduct {
     required this.tipo,
     required this.disponible,
     this.motivo,
+    this.advertencia,
     required this.stock,
     required this.enMenu,
     this.imagen,
@@ -39,6 +40,7 @@ class _SaleProduct {
   final String tipo;
   final bool disponible;
   final String? motivo;
+  final String? advertencia;
   final double stock;
   final bool enMenu;
   final Uint8List? imagen;
@@ -141,6 +143,10 @@ class _SalesPageState extends State<SalesPage> {
     final productos = <int, _SaleProduct>{};
     for (final item in menuItems) {
       final producto = await _catalogRepository.getProducto(item.productoId);
+      final advertencia = await _catalogRepository.advertenciaInsumos(
+        item.productoId,
+        1,
+      );
       productos[item.productoId] = _SaleProduct(
         productoId: item.productoId,
         menuDiaItemId: item.id,
@@ -152,6 +158,7 @@ class _SalesPageState extends State<SalesPage> {
         tipo: item.tipoProducto,
         disponible: item.disponible,
         motivo: item.motivoAgotado,
+        advertencia: advertencia,
         stock: producto?.stock ?? 0,
         enMenu: true,
         imagen: producto?.imagen,
@@ -166,10 +173,17 @@ class _SalesPageState extends State<SalesPage> {
       final siempre =
           producto.categoriaSiempreDisponible || producto.esVentaDirecta;
       String? motivo;
+      String? advertencia;
       var disponible = false;
       if (siempre) {
         motivo = await _catalogRepository.motivoNoDisponible(producto.id!, 1);
         disponible = motivo == null;
+        if (disponible) {
+          advertencia = await _catalogRepository.advertenciaInsumos(
+            producto.id!,
+            1,
+          );
+        }
       }
       productos[producto.id!] = _SaleProduct(
         productoId: producto.id!,
@@ -181,6 +195,7 @@ class _SalesPageState extends State<SalesPage> {
         tipo: producto.tipo,
         disponible: disponible,
         motivo: motivo,
+        advertencia: advertencia,
         stock: producto.stock,
         enMenu: siempre,
         imagen: producto.imagen,
@@ -737,6 +752,7 @@ class _SalesPageState extends State<SalesPage> {
                           : 'Toca para agregar')
                     : producto.razon,
                 onTap: producto.vendible ? () => _add(producto) : null,
+                advertencia: producto.vendible ? producto.advertencia : null,
                 accion:
                     producto.menuDiaItemId != null &&
                         widget.usuario.puede(Permiso.agotamiento)

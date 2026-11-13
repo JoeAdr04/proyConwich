@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/app_info.dart';
 import '../../../core/auth_repository.dart';
 import '../../../core/session.dart';
 import '../../../ui/common.dart';
@@ -359,7 +360,7 @@ class _AppShellState extends State<AppShell> {
                   const SizedBox(width: 8),
                 ],
                 Text(
-                  'Sazón',
+                  appNombre,
                   style: Theme.of(context).textTheme.titleLarge
                       ?.copyWith(fontWeight: FontWeight.w800),
                 ),
@@ -384,10 +385,23 @@ class _AppShellState extends State<AppShell> {
                       children: [
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                          child: Text(
-                            'Sazón',
-                            style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.w800),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                appNombre,
+                                style: Theme.of(context).textTheme.titleLarge
+                                    ?.copyWith(fontWeight: FontWeight.w800),
+                              ),
+                              Text(
+                                appCanal,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ],
                           ),
                         ),
                         for (var i = 0; i < destinations.length; i++)
@@ -470,7 +484,7 @@ class _AppShellState extends State<AppShell> {
                             if (extended) ...[
                               const SizedBox(height: 8),
                               Text(
-                                'Sazón',
+                                appNombre,
                                 style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(fontWeight: FontWeight.w800),
                               ),

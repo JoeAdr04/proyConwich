@@ -428,6 +428,12 @@ class SalesRepository {
         where: 'pedido_id = ?',
         whereArgs: [pedidoId],
       );
+      await txn.update(
+        'faltantes_insumo',
+        {'estado': 'ANULADO'},
+        where: 'pedido_id = ?',
+        whereArgs: [pedidoId],
+      );
     });
   }
 
@@ -529,15 +535,48 @@ class SalesRepository {
       [productoId],
     );
     for (final row in receta) {
-      await txn.insert('consumos_insumo', {
-        'insumo_id': row['insumo_id'],
-        'pedido_id': pedidoId,
-        'detalle_pedido_id': detalleId,
-        'fecha': fecha,
-        'cantidad': (row['cantidad'] as num).toDouble() * cantidad,
-        'costo_unitario': (row['costo_promedio'] as num).toDouble(),
-        'estado': 'CONFIRMADO',
-      });
+      final insumoId = row['insumo_id']! as int;
+      final requerido = (row['cantidad'] as num).toDouble() * cantidad;
+      final costo = (row['costo_promedio'] as num).toDouble();
+      final stockRows = await txn.query(
+        'v_stock_insumos',
+        columns: ['stock'],
+        where: 'insumo_id = ?',
+        whereArgs: [insumoId],
+        limit: 1,
+      );
+      final stockActual = stockRows.isEmpty
+          ? 0.0
+          : (stockRows.first['stock'] as num).toDouble();
+      final disponible = stockActual > 0 ? stockActual : 0.0;
+      final consumido = requerido < disponible ? requerido : disponible;
+      if (consumido > 0) {
+        await txn.insert('consumos_insumo', {
+          'insumo_id': insumoId,
+          'pedido_id': pedidoId,
+          'detalle_pedido_id': detalleId,
+          'fecha': fecha,
+          'cantidad': consumido,
+          'costo_unitario': costo,
+          'estado': 'CONFIRMADO',
+        });
+      }
+      final faltante = requerido - disponible;
+      if (faltante > 0.000001) {
+        await txn.insert('faltantes_insumo', {
+          'fecha': fecha,
+          'pedido_id': pedidoId,
+          'detalle_pedido_id': detalleId,
+          'producto_id': productoId,
+          'insumo_id': insumoId,
+          'cantidad_requerida': requerido,
+          'cantidad_disponible': disponible,
+          'cantidad_consumida': consumido,
+          'cantidad_faltante': faltante,
+          'costo_unitario': costo,
+          'estado': 'CONFIRMADO',
+        });
+      }
     }
   }
 

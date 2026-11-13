@@ -30,10 +30,8 @@ void main() {
   testWidgets('login validates empty fields without touching the database', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      MaterialApp(home: LoginPage(onLogin: (_) {})),
-    );
-    expect(find.text('Sazón'), findsOneWidget);
+    await tester.pumpWidget(MaterialApp(home: LoginPage(onLogin: (_) {})));
+    expect(find.text('Conwich'), findsOneWidget);
     expect(find.text('Ingresar'), findsOneWidget);
 
     await tester.tap(find.text('Ingresar'));

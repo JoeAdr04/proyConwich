@@ -13,6 +13,7 @@ class _ReportData {
     required this.salidas,
     required this.inventario,
     required this.pedidos,
+    required this.faltantes,
   });
 
   final ResumenFinanciero resumen;
@@ -20,6 +21,7 @@ class _ReportData {
   final List<GastoReporte> salidas;
   final List<InventarioReporte> inventario;
   final List<PedidoReporte> pedidos;
+  final List<FaltanteInsumoReporte> faltantes;
 }
 
 class ReportsPage extends StatefulWidget {
@@ -134,12 +136,14 @@ class _ReportsPageState extends State<ReportsPage> {
     );
     final inventario = await _repository.getInventario();
     final pedidos = await _repository.getPedidos(range.start, range.end);
+    final faltantes = await _repository.getFaltantes(range.start, range.end);
     return _ReportData(
       resumen: resumen,
       productos: productos,
       salidas: salidas,
       inventario: inventario,
       pedidos: pedidos,
+      faltantes: faltantes,
     );
   }
 
@@ -148,7 +152,7 @@ class _ReportsPageState extends State<ReportsPage> {
     final range = _range;
     final finMostrar = range.end.subtract(const Duration(days: 1));
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
           SliverToBoxAdapter(
@@ -226,6 +230,10 @@ class _ReportsPageState extends State<ReportsPage> {
                     icon: Icon(Icons.inventory_2_outlined),
                     text: 'Inventario',
                   ),
+                  Tab(
+                    icon: Icon(Icons.warning_amber_rounded),
+                    text: 'Faltantes',
+                  ),
                   Tab(icon: Icon(Icons.receipt_long_outlined), text: 'Pedidos'),
                 ],
               ),
@@ -251,6 +259,7 @@ class _ReportsPageState extends State<ReportsPage> {
                 _resumenTab(context, data),
                 _productosTab(context, data),
                 _inventarioTab(context, data),
+                _faltantesTab(context, data),
                 _pedidosTab(context, data),
               ],
             );
@@ -522,6 +531,94 @@ class _ReportsPageState extends State<ReportsPage> {
               ),
             ),
           ),
+      ],
+    );
+  }
+
+  Widget _faltantesTab(BuildContext context, _ReportData data) {
+    if (data.faltantes.isEmpty) {
+      return const EmptyState(
+        icon: Icons.check_circle_outline,
+        title: 'Sin faltantes en el período',
+        message: 'Ninguna venta consumió más insumos de los disponibles.',
+      );
+    }
+    final scheme = Theme.of(context).colorScheme;
+    final total = data.faltantes.fold<double>(
+      0,
+      (sum, item) => sum + item.costoFaltante,
+    );
+    return ListView(
+      padding: EdgeInsets.all(
+        esAngosto(MediaQuery.sizeOf(context).width) ? 12 : 24,
+      ),
+      children: [
+        StatGrid(
+          children: [
+            StatCard(
+              label: 'Eventos registrados',
+              value: '${data.faltantes.length}',
+              icon: Icons.warning_amber_rounded,
+              color: scheme.error,
+            ),
+            StatCard(
+              label: 'Costo del faltante',
+              value: formatMoney(total),
+              icon: Icons.price_check,
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        AppCard(
+          padding: EdgeInsets.zero,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columns: const [
+                DataColumn(label: Text('Fecha')),
+                DataColumn(label: Text('Pedido')),
+                DataColumn(label: Text('Producto')),
+                DataColumn(label: Text('Insumo')),
+                DataColumn(label: Text('Requerido'), numeric: true),
+                DataColumn(label: Text('Disponible'), numeric: true),
+                DataColumn(label: Text('Faltante'), numeric: true),
+                DataColumn(label: Text('Costo'), numeric: true),
+              ],
+              rows: data.faltantes
+                  .map(
+                    (item) => DataRow(
+                      cells: [
+                        DataCell(Text(formatDateTimeShort(item.fecha))),
+                        DataCell(Text(item.referencia ?? '—')),
+                        DataCell(Text(item.producto)),
+                        DataCell(Text(item.insumo)),
+                        DataCell(
+                          Text(
+                            '${formatQty(item.requerido)} ${item.unidad}',
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            '${formatQty(item.disponible)} ${item.unidad}',
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            '${formatQty(item.faltante)} ${item.unidad}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: scheme.error,
+                            ),
+                          ),
+                        ),
+                        DataCell(Text(formatMoney(item.costoFaltante))),
+                      ],
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        ),
       ],
     );
   }

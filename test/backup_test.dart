@@ -80,7 +80,7 @@ void main() {
     final copia = await service.crearCopia(motivo: 'manual');
     expect(await File(copia.ruta).exists(), isTrue);
     expect(copia.bytes.length, greaterThan(100));
-    expect(copia.nombre, startsWith('sazon_respaldo_'));
+    expect(copia.nombre, startsWith('conwich_respaldo_'));
     expect(copia.nombre, endsWith('.db'));
 
     final inspeccion = await service.inspeccionar(
@@ -94,7 +94,10 @@ void main() {
     expect(inspeccion.schemaVersion, AppDatabase.schemaVersion);
     expect(inspeccion.conteos['usuarios'], 1);
     expect(inspeccion.sha256.length, 64);
-    expect(inspeccion.instalacionId, (await AppDatabase.instance.instalacionId));
+    expect(
+      inspeccion.instalacionId,
+      (await AppDatabase.instance.instalacionId),
+    );
 
     // Se agrega información después del respaldo: al restaurar debe desaparecer.
     final db2 = await AppDatabase.instance.database;
@@ -126,38 +129,42 @@ void main() {
     expect(meta?['ultimo_respaldo_en'], isNotNull);
   });
 
-  test('la exportación a Excel genera una hoja por tabla sin datos sensibles', () async {
-    final db = await AppDatabase.instance.database;
-    await db.insert('categorias_producto', {'nombre': 'Bebidas'});
-    await db.insert('productos', {
-      'nombre': 'Café',
-      'categoria_id': 1,
-      'precio': 10,
-      'tipo': 'DIRECTO',
-      'creado_en': '2026-11-10 08:00:00',
-    });
+  test(
+    'la exportación a Excel genera una hoja por tabla sin datos sensibles',
+    () async {
+      final db = await AppDatabase.instance.database;
+      await db.insert('categorias_producto', {'nombre': 'Bebidas'});
+      await db.insert('productos', {
+        'nombre': 'Café',
+        'categoria_id': 1,
+        'precio': 10,
+        'tipo': 'DIRECTO',
+        'creado_en': '2026-11-10 08:00:00',
+      });
 
-    final bytes = await ExcelExporter().generar();
-    expect(bytes.length, greaterThan(1000));
-    expect(bytes.sublist(0, 2), [0x50, 0x4B]); // Firma ZIP de .xlsx
+      final bytes = await ExcelExporter().generar();
+      expect(bytes.length, greaterThan(1000));
+      expect(bytes.sublist(0, 2), [0x50, 0x4B]); // Firma ZIP de .xlsx
 
-    final libro = Excel.decodeBytes(bytes);
-    expect(libro.tables.containsKey('Resumen'), isTrue);
-    expect(libro.tables.containsKey('Productos'), isTrue);
-    expect(libro.tables.containsKey('Pedidos'), isTrue);
+      final libro = Excel.decodeBytes(bytes);
+      expect(libro.tables.containsKey('Resumen'), isTrue);
+      expect(libro.tables.containsKey('Productos'), isTrue);
+      expect(libro.tables.containsKey('Pedidos'), isTrue);
 
-    final encabezadosUsuarios = libro.tables['Usuarios']!.rows.first
-        .map((celda) => celda?.value.toString())
-        .toList();
-    expect(encabezadosUsuarios.contains('password_hash'), isFalse);
+      final encabezadosUsuarios = libro.tables['Usuarios']!.rows.first
+          .map((celda) => celda?.value.toString())
+          .toList();
+      expect(encabezadosUsuarios.contains('password_hash'), isFalse);
 
-    final encabezadosProductos = libro.tables['Productos']!.rows.first
-        .map((celda) => celda?.value.toString())
-        .toList();
-    expect(encabezadosProductos.contains('imagen'), isFalse);
-  });
+      final encabezadosProductos = libro.tables['Productos']!.rows.first
+          .map((celda) => celda?.value.toString())
+          .toList();
+      expect(encabezadosProductos.contains('imagen'), isFalse);
+    },
+  );
 
-  test('rechaza archivos que no son una base SQLite', () async {    final dir = await Directory.systemTemp.createTemp('sazon_backup_');
+  test('rechaza archivos que no son una base SQLite', () async {
+    final dir = await Directory.systemTemp.createTemp('sazon_backup_');
     addTearDown(() => dir.delete(recursive: true));
     final service = BackupService(
       rutaTemporal: () async => dir.path,

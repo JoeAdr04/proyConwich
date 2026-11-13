@@ -13,6 +13,7 @@ class ProductoCatalogoCard extends StatelessWidget {
     required this.precio,
     required this.color,
     required this.mensaje,
+    this.advertencia,
     this.imagen,
     this.onTap,
     this.habilitado = true,
@@ -29,6 +30,9 @@ class ProductoCatalogoCard extends StatelessWidget {
   final double precio;
   final int color;
   final String mensaje;
+
+  /// Aviso no bloqueante (por ejemplo, insumos insuficientes en la receta).
+  final String? advertencia;
   final VoidCallback? onTap;
   final bool habilitado;
 
@@ -193,6 +197,30 @@ class ProductoCatalogoCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                      if (advertencia != null && advertencia!.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              size: 18,
+                              color: Colors.orange.shade800,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                advertencia!,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: Colors.orange.shade900,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),

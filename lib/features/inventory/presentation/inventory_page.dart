@@ -155,7 +155,7 @@ class _InventoryPageState extends State<InventoryPage> {
             children: [
               PageHeader(
                 title: 'Insumos',
-                subtitle: 'Materias primas y su stock. Al vender un plato se descuentan según su receta.',
+                subtitle: 'Materias primas y su stock. Al vender un plato se descuentan sus insumos según la receta, si la tiene.',
                 actions: [
                   FilledButton.icon(
                     onPressed: snapshot.hasData ? () => _openForm() : null,

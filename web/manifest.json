@@ -1,11 +1,11 @@
 {
-    "name": "test_code_02",
-    "short_name": "test_code_02",
+    "name": "Conwich",
+    "short_name": "Conwich",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Conwich - Punto de venta para restaurante.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -17,7 +17,7 @@ class ReceiptService {
     required String cajero,
   }) async {
     final meta = await AppDatabase.instance.leerAppMeta();
-    final negocio = (meta?['nombre_negocio'] as String?) ?? 'Sazón';
+    final negocio = (meta?['nombre_negocio'] as String?) ?? 'Conwich';
     final pedido = detalle.pedido;
     final fecha = parseSqlDateTime(pedido.fecha);
     final fechaTexto = fecha == null

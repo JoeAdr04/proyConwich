@@ -64,7 +64,7 @@ class BackupService {
 
     final dir = Directory(p.join((await _temporal()).path, 'respaldos'));
     await dir.create(recursive: true);
-    final nombre = 'sazon_respaldo_${_stamp(DateTime.now())}.db';
+    final nombre = 'conwich_respaldo_${_stamp(DateTime.now())}.db';
     final destino = File(p.join(dir.path, nombre));
     await origen.copy(destino.path);
 
@@ -82,8 +82,8 @@ class BackupService {
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(copia.ruta, mimeType: _mimeDb)],
-        title: 'Respaldo de Sazón',
-        subject: 'Respaldo Sazón ${_stamp(copia.fecha)}',
+        title: 'Respaldo de Conwich',
+        subject: 'Respaldo Conwich ${_stamp(copia.fecha)}',
         sharePositionOrigin: origen,
       ),
     );
@@ -233,7 +233,7 @@ class BackupService {
   Future<CopiaSeguridad> crearCopiaSeguridad() async {
     final copia = await crearCopia(motivo: 'seguridad_pre_restauracion');
     final dir = await _dirSeguridad();
-    final nombre = 'sazon_seguridad_${_stamp(DateTime.now())}.db';
+    final nombre = 'conwich_seguridad_${_stamp(DateTime.now())}.db';
     final destino = File(p.join(dir.path, nombre));
     await destino.writeAsBytes(copia.bytes, flush: true);
     // La copia temporal ya cumplió su función.
@@ -330,7 +330,7 @@ class BackupService {
     final cabecera = String.fromCharCodes(bytes.sublist(0, 16));
     if (cabecera != _cabecera) {
       throw const FormatException(
-        'El archivo seleccionado no es una base de datos de Sazón.',
+        'El archivo seleccionado no es una base de datos de Conwich.',
       );
     }
   }

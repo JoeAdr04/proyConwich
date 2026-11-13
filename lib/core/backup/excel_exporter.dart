@@ -15,7 +15,8 @@ import '../date_utils.dart';
 /// Es una copia legible para revisar o llevar a contabilidad; **no** sirve
 /// para restaurar la aplicación (para eso está el respaldo `.db`).
 class ExcelExporter {
-  static const _mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  static const _mime =
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
   /// Tablas exportadas con su nombre amigable. Se excluyen `sesion_actual`
   /// (estado interno), `app_meta` (va en el resumen) y los datos sensibles.
@@ -34,6 +35,7 @@ class ExcelExporter {
     'compras': 'Compras',
     'detalle_compra': 'Detalle de compras',
     'consumos_insumo': 'Consumos de insumo',
+    'faltantes_insumo': 'Faltantes de insumo',
     'ajustes_stock': 'Ajustes de stock',
     'conteos_inventario': 'Conteos de inventario',
     'detalle_conteo': 'Detalle de conteos',
@@ -49,8 +51,7 @@ class ExcelExporter {
     'productos': {'imagen'},
   };
 
-  String nombreArchivo(DateTime fecha) =>
-      'sazon_datos_${_stamp(fecha)}.xlsx';
+  String nombreArchivo(DateTime fecha) => 'sazon_datos_${_stamp(fecha)}.xlsx';
 
   Future<Uint8List> generar({DateTime? ahora}) async {
     final momento = ahora ?? DateTime.now();
@@ -71,23 +72,17 @@ class ExcelExporter {
     }
 
     void fila(String etiqueta, String valor) {
-      resumen.appendRow([
-        TextCellValue(etiqueta),
-        TextCellValue(valor),
-      ]);
+      resumen.appendRow([TextCellValue(etiqueta), TextCellValue(valor)]);
     }
 
     fila('Aplicación', appNombre);
-    fila('Versión de la app', appVersion);
+    fila('Versión de la app', appVersionEtiqueta);
     fila('Instalación', '${meta?['instalacion_id'] ?? '—'}');
     fila('Último respaldo', '${meta?['ultimo_respaldo_en'] ?? '—'}');
     fila('Exportado el', sqlDateTime(momento));
     fila('Versión de esquema', '${AppDatabase.schemaVersion}');
     resumen.appendRow([TextCellValue('')]);
-    resumen.appendRow([
-      TextCellValue('Hoja'),
-      TextCellValue('Registros'),
-    ]);
+    resumen.appendRow([TextCellValue('Hoja'), TextCellValue('Registros')]);
     for (final entrada in conteos.entries) {
       resumen.appendRow([
         TextCellValue(entrada.key),
@@ -153,12 +148,10 @@ class ExcelExporter {
   }) async {
     await SharePlus.instance.share(
       ShareParams(
-        files: [
-          XFile.fromData(bytes, mimeType: _mime, name: nombre),
-        ],
+        files: [XFile.fromData(bytes, mimeType: _mime, name: nombre)],
         fileNameOverrides: [nombre],
-        title: 'Datos de Sazón',
-        subject: 'Datos de Sazón',
+        title: 'Datos de Conwich',
+        subject: 'Datos de Conwich',
         sharePositionOrigin: origen,
       ),
     );

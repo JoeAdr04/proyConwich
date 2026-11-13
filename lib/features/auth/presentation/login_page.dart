@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/app_info.dart';
 import '../../../core/auth_repository.dart';
 import '../../../core/session.dart';
 import '../../../ui/common.dart';
@@ -53,10 +54,7 @@ class _LoginPageState extends State<LoginPage> {
       _error = null;
     });
     try {
-      final usuario = await _repository.login(
-        _usuario.text,
-        _password.text,
-      );
+      final usuario = await _repository.login(_usuario.text, _password.text);
       if (!mounted) return;
       if (usuario == null) {
         setState(() {
@@ -120,10 +118,33 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                         const SizedBox(height: 18),
-                        Text(
-                          'Sazón',
-                          style: Theme.of(context).textTheme.headlineMedium
-                              ?.copyWith(fontWeight: FontWeight.w800),
+                        Row(
+                          children: [
+                            Text(
+                              appNombre,
+                              style: Theme.of(context).textTheme.headlineMedium
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: scheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                appCanal,
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: scheme.onPrimaryContainer,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -153,9 +174,8 @@ class _LoginPageState extends State<LoginPage> {
                             label: 'Contraseña',
                             icon: Icons.lock_outline,
                             suffix: IconButton(
-                              onPressed: () => setState(
-                                () => _verPassword = !_verPassword,
-                              ),
+                              onPressed: () =>
+                                  setState(() => _verPassword = !_verPassword),
                               icon: Icon(
                                 _verPassword
                                     ? Icons.visibility_off_outlined
@@ -163,8 +183,7 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             ),
                           ),
-                          validator: (value) =>
-                              (value == null || value.isEmpty)
+                          validator: (value) => (value == null || value.isEmpty)
                               ? 'Ingresa tu contraseña'
                               : null,
                         ),
@@ -192,9 +211,7 @@ class _LoginPageState extends State<LoginPage> {
                                 Expanded(
                                   child: Text(
                                     'Primer acceso: admin / 1234',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
+                                    style: Theme.of(context).textTheme.bodySmall
                                         ?.copyWith(color: scheme.primary),
                                   ),
                                 ),
@@ -204,10 +221,7 @@ class _LoginPageState extends State<LoginPage> {
                         ],
                         if (_error != null) ...[
                           const SizedBox(height: 14),
-                          Text(
-                            _error!,
-                            style: TextStyle(color: scheme.error),
-                          ),
+                          Text(_error!, style: TextStyle(color: scheme.error)),
                         ],
                         const SizedBox(height: 22),
                         FilledButton.icon(

@@ -35,7 +35,7 @@ class RestaurantApp extends StatelessWidget {
   Widget build(BuildContext context) {
     const seed = Color(0xFF0F766E);
     return MaterialApp(
-      title: 'Sazón',
+      title: 'Conwich',
       debugShowCheckedModeBanner: false,
       scrollBehavior: const AppScrollBehavior(),
       theme: ThemeData(

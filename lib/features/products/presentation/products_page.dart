@@ -201,7 +201,7 @@ class _ProductsPageState extends State<ProductsPage> {
             children: [
               PageHeader(
                 title: 'Productos',
-                subtitle: 'Platos y bebidas que usan receta. Los precios solo se cambian aquí y las categorías se crean desde esta misma pantalla.',
+                subtitle: 'Platos y bebidas. La receta es opcional: si la configuras, descuenta insumos; si no, el producto se vende independiente. Los precios solo se cambian aquí y las categorías se crean desde esta misma pantalla.',
                 actions: [
                   FilledButton.icon(
                     onPressed: snapshot.hasData ? () => _openForm() : null,
@@ -351,7 +351,7 @@ class _ProductRow extends StatelessWidget {
         ? 'Venta directa'
         : producto.esDirecto
         ? 'Directo (legado)'
-        : 'Preparado con receta';
+        : 'Preparado · receta opcional';
     final info = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -404,7 +404,7 @@ class _ProductRow extends StatelessWidget {
               ? 'Stock: ${formatQty(producto.stock)}'
               : producto.esVentaDirecta
               ? 'Receta fija: 1 unidad'
-              : 'Con receta',
+              : 'Receta opcional',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: producto.esDirecto && producto.stock <= producto.stockMinimo
                 ? scheme.error
@@ -902,7 +902,7 @@ class _ProductDialogState extends State<_ProductDialog> {
                   subtitle: Text(
                     directo
                         ? 'Los productos inactivos no se venden ni aparecen en el menú.'
-                        : 'Configura la receta desde la lista de productos.',
+                        : 'La receta es opcional: configúrala desde la lista de productos.',
                   ),
                   value: _activo,
                   onChanged: (value) => setState(() => _activo = value),
@@ -1246,10 +1246,6 @@ class _RecipeDialogState extends State<_RecipeDialog> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_seleccionados.isEmpty) {
-      setState(() => _error = 'Selecciona al menos un insumo.');
-      return;
-    }
     setState(() {
       _saving = true;
       _error = null;
@@ -1472,7 +1468,8 @@ class _RecipeDialogState extends State<_RecipeDialog> {
             children: [
               Text(
                 'Indica cuánto de cada insumo consume una porción vendida. '
-                'Puedes usar la unidad del insumo o una equivalente (por ejemplo 250 ml de leche).',
+                'Puedes usar la unidad del insumo o una equivalente (por ejemplo 250 ml de leche). '
+                'Es opcional: si no eliges insumos, el producto no descuenta stock.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
