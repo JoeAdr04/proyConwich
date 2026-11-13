@@ -6,7 +6,7 @@ class ResumenFinanciero {
     required this.ventas,
     required this.cobrosEfectivo,
     required this.cobrosQr,
-    required this.cogs,
+    required this.gastoInsumos,
     required this.salidas,
     required this.salidasEfectivo,
     required this.salidasQr,
@@ -16,17 +16,15 @@ class ResumenFinanciero {
   final double ventas;
   final double cobrosEfectivo;
   final double cobrosQr;
-  final double cogs;
+  final double gastoInsumos;
   final double salidas;
   final double salidasEfectivo;
   final double salidasQr;
   final int pedidos;
 
   double get cobros => cobrosEfectivo + cobrosQr;
-  double get resultado => ventas - cogs - salidas;
-  double get flujoCaja => cobros - salidas;
+  double get ganancia => ventas - gastoInsumos - salidas;
   double get ticketPromedio => pedidos == 0 ? 0 : ventas / pedidos;
-  double get margenBruto => ventas == 0 ? 0 : (ventas - cogs) / ventas;
 }
 
 class ProductoReporte {
@@ -34,15 +32,17 @@ class ProductoReporte {
     required this.nombre,
     required this.cantidad,
     required this.ventas,
-    required this.cogs,
+    required this.costo,
+    required this.color,
   });
 
   final String nombre;
   final double cantidad;
   final double ventas;
-  final double cogs;
+  final double costo;
+  final int color;
 
-  double get margen => ventas - cogs;
+  double get ganancia => ventas - costo;
 }
 
 class PedidoReporte {
@@ -151,17 +151,11 @@ class ReportRepository {
         COALESCE((SELECT SUM(monto) FROM pagos
                   WHERE estado = 'CONFIRMADO' AND metodo_pago = 'QR'
                     AND fecha >= ? AND fecha < ?), 0) AS cobros_qr,
-        COALESCE((SELECT SUM(ci.costo_unitario * ci.cantidad)
-                  FROM consumos_insumo ci
-                  WHERE ci.estado = 'CONFIRMADO'
-                    AND ci.fecha >= ? AND ci.fecha < ?), 0)
-        + COALESCE((SELECT SUM(dp.costo_unitario * dp.cantidad)
-                    FROM detalle_pedido dp
-                    INNER JOIN pedidos p ON p.id = dp.pedido_id
-                    WHERE dp.costo_unitario > 0
-                      AND p.estado_pago <> 'ANULADO'
-                      AND p.estado_entrega <> 'ANULADO'
-                      AND p.fecha >= ? AND p.fecha < ?), 0) AS cogs,
+        COALESCE((SELECT SUM(a.cantidad * i.costo_promedio)
+                  FROM ajustes_stock a
+                  INNER JOIN insumos i ON i.id = a.insumo_id
+                  WHERE a.cantidad > 0
+                    AND a.fecha >= ? AND a.fecha < ?), 0) AS gasto_insumos,
         COALESCE((SELECT SUM(monto) FROM gastos
                   WHERE estado = 'REGISTRADO'
                     AND fecha >= ? AND fecha < ?), 0) AS salidas,
@@ -177,8 +171,7 @@ class ReportRepository {
         inicio, fin, // pedidos
         inicio, fin, // cobros efectivo
         inicio, fin, // cobros qr
-        inicio, fin, // cogs consumos
-        inicio, fin, // cogs productos directos
+        inicio, fin, // gasto en insumos
         inicio, fin, // salidas
         inicio, fin, // salidas efectivo
         inicio, fin, // salidas qr
@@ -191,7 +184,7 @@ class ReportRepository {
       pedidos: value('pedidos').toInt(),
       cobrosEfectivo: value('cobros_efectivo'),
       cobrosQr: value('cobros_qr'),
-      cogs: value('cogs'),
+      gastoInsumos: value('gasto_insumos'),
       salidas: value('salidas'),
       salidasEfectivo: value('salidas_efectivo'),
       salidasQr: value('salidas_qr'),
@@ -209,22 +202,18 @@ class ReportRepository {
              SUM(dp.cantidad) AS cantidad,
              SUM(dp.subtotal) AS ventas,
              SUM(
-               CASE WHEN dp.costo_unitario > 0
-                 THEN dp.costo_unitario * dp.cantidad
-                 ELSE COALESCE((
-                   SELECT SUM(ci.costo_unitario * ci.cantidad)
-                   FROM consumos_insumo ci
-                   WHERE ci.detalle_pedido_id = dp.id
-                     AND ci.estado = 'CONFIRMADO'
-                 ), 0)
-               END
-             ) AS cogs
+               COALESCE(NULLIF(dp.costo_unitario, 0), COALESCE(pr.costo_unitario, 0))
+               * dp.cantidad
+             ) AS costo,
+             COALESCE(c.color, 4280391418) AS categoria_color
       FROM detalle_pedido dp
       INNER JOIN pedidos p ON p.id = dp.pedido_id
+      LEFT JOIN productos pr ON pr.id = dp.producto_id
+      LEFT JOIN categorias_producto c ON c.id = pr.categoria_id
       WHERE p.estado_pago <> 'ANULADO'
         AND p.estado_entrega <> 'ANULADO'
         AND p.fecha >= ? AND p.fecha < ?
-      GROUP BY dp.nombre_producto
+      GROUP BY dp.nombre_producto, c.color
       ORDER BY ventas DESC
     ''',
       [sqlDateTime(desde), sqlDateTime(hasta)],
@@ -235,7 +224,8 @@ class ReportRepository {
             nombre: row['nombre']! as String,
             cantidad: (row['cantidad'] as num).toDouble(),
             ventas: (row['ventas'] as num).toDouble(),
-            cogs: (row['cogs'] as num).toDouble(),
+            costo: (row['costo'] as num).toDouble(),
+            color: (row['categoria_color'] as num).toInt(),
           ),
         )
         .toList();

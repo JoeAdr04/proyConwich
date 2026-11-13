@@ -280,10 +280,13 @@ void main() {
     var resumen = await reports.getResumen(inicio, fin);
     expect(resumen.ventas, 35);
     expect(resumen.cobros, 35);
-    expect(resumen.cogs, 6);
+    // Gasto en insumos: la carga inicial de stock (10 und de Papa × Bs 3).
+    expect(resumen.gastoInsumos, 30);
     expect(resumen.salidas, 10);
-    expect(resumen.resultado, 19);
-    expect(resumen.flujoCaja, 25);
+    expect(
+      resumen.ganancia,
+      resumen.ventas - resumen.gastoInsumos - resumen.salidas,
+    );
     final productos = await reports.getProductos(inicio, fin);
     expect(productos.length, 2);
     final pedidosReporte = await reports.getPedidos(inicio, fin);
@@ -313,7 +316,12 @@ void main() {
     final resumenAnulado = await reports.getResumen(inicio, fin);
     expect(resumenAnulado.ventas, 0);
     expect(resumenAnulado.cobros, 0);
-    expect(resumenAnulado.cogs, 0);
+    expect(
+      resumenAnulado.ganancia,
+      resumenAnulado.ventas -
+          resumenAnulado.gastoInsumos -
+          resumenAnulado.salidas,
+    );
 
     final pendienteId = await sales.crearPedido(
       usuarioId: admin.id,
@@ -372,7 +380,10 @@ void main() {
     final resumenFinal = await reports.getResumen(inicio, fin);
     expect(resumenFinal.ventas, 5);
     expect(resumenFinal.cobros, 5);
-    expect(resumenFinal.cogs, 3);
+    expect(
+      resumenFinal.ganancia,
+      resumenFinal.ventas - resumenFinal.gastoInsumos - resumenFinal.salidas,
+    );
 
     final usuarios = await auth.getUsuarios();
     expect(usuarios.length, 3);
@@ -1008,15 +1019,17 @@ void main() {
         isFalse,
       );
       expect(
-        categorias.any((categoria) => categoria['nombre'] == 'ALMUERZO'),
+        categorias.any(
+          (categoria) => categoria['nombre'] == 'ALMUERZO COMPLETO',
+        ),
         isTrue,
       );
       expect(
-        categorias.any((categoria) => categoria['nombre'] == 'PLATO SUELTO'),
+        categorias.any((categoria) => categoria['nombre'] == 'SOPA'),
         isTrue,
       );
       expect(
-        categorias.any((categoria) => categoria['nombre'] == 'COMPLETO'),
+        categorias.any((categoria) => categoria['nombre'] == 'SEGUNDO'),
         isTrue,
       );
     },
@@ -1067,7 +1080,7 @@ void main() {
     expect(items.length, 1);
   });
 
-  test('ALMUERZO tiene las subcategorías PLATO SUELTO y COMPLETO', () async {
+  test('ALMUERZO COMPLETO tiene las subcategorías SOPA y SEGUNDO', () async {
     await AuthRepository().login('admin', '1234');
     final catalog = CatalogRepository();
     final categorias = await catalog.getCategorias();
@@ -1076,17 +1089,17 @@ void main() {
       isFalse,
     );
     final almuerzo = categorias.firstWhere(
-      (categoria) => categoria.nombre == 'ALMUERZO',
+      (categoria) => categoria.nombre == 'ALMUERZO COMPLETO',
     );
     expect(almuerzo.parentId, isNull);
-    final platoSuelto = categorias.firstWhere(
-      (categoria) => categoria.nombre == 'PLATO SUELTO',
+    final sopa = categorias.firstWhere(
+      (categoria) => categoria.nombre == 'SOPA',
     );
-    final completo = categorias.firstWhere(
-      (categoria) => categoria.nombre == 'COMPLETO',
+    final segundo = categorias.firstWhere(
+      (categoria) => categoria.nombre == 'SEGUNDO',
     );
-    expect(platoSuelto.parentId, almuerzo.id);
-    expect(completo.parentId, almuerzo.id);
+    expect(sopa.parentId, almuerzo.id);
+    expect(segundo.parentId, almuerzo.id);
   });
 
   test('un admin puede elevar la sesión con su contraseña', () async {
@@ -1213,6 +1226,352 @@ void main() {
       isTrue,
       reason: 'La base de datos debe rechazar el estado PUBLICADO.',
     );
+  });
+
+  test('un producto preparado sin receta se puede vender', () async {
+    final auth = AuthRepository();
+    final admin = (await auth.login('admin', '1234'))!;
+    final catalog = CatalogRepository();
+    final categoria = (await catalog.getCategorias()).first;
+    final productoId = await catalog.saveProducto(
+      Producto(
+        nombre: 'Plato sin receta',
+        categoriaId: categoria.id!,
+        categoriaNombre: categoria.nombre,
+        categoriaColor: categoria.color,
+        precio: 10,
+        tipo: 'PREPARADO',
+        stockMinimo: 0,
+        costoUnitario: 0,
+        activo: true,
+        stock: 0,
+      ),
+    );
+
+    // El sistema no depende de que el producto tenga receta.
+    expect(await catalog.motivoNoDisponible(productoId, 1), isNull);
+
+    final menuRepo = MenuRepository();
+    final menu = await menuRepo.crearMenu(DateTime.now(), 'ALMUERZO', admin.id);
+    await menuRepo.agregarProducto(menu.id, productoId);
+    await menuRepo.habilitar(menu.id);
+
+    final cash = CashRepository();
+    final caja = await cash.abrirCaja(
+      fecha: DateTime.now(),
+      fondoInicial: 100,
+      usuarioId: admin.id,
+    );
+
+    final sales = SalesRepository();
+    final pedidoId = await sales.crearPedido(
+      usuarioId: admin.id,
+      cajaId: caja.id,
+      menuDiaId: menu.id,
+      lineas: [
+        CartLine(
+          productoId: productoId,
+          menuDiaItemId: (await menuRepo.getItems(menu.id)).first.id,
+          nombre: 'Plato sin receta',
+          precio: 10,
+          cantidad: 1,
+          tipo: 'PREPARADO',
+        ),
+      ],
+      pagos: const [PagoInput(metodo: 'EFECTIVO', monto: 10)],
+    );
+    final pedido = await sales.getPedido(pedidoId);
+    expect(pedido.pedido.total, 10);
+  });
+
+  test('el menú se puede reabrir y acepta platos nuevos', () async {
+    final auth = AuthRepository();
+    final admin = (await auth.login('admin', '1234'))!;
+    final catalog = CatalogRepository();
+    final categoria = (await catalog.getCategorias()).first;
+    Future<int> crearPlato(String nombre) => catalog.saveProducto(
+      Producto(
+        nombre: nombre,
+        categoriaId: categoria.id!,
+        categoriaNombre: categoria.nombre,
+        categoriaColor: categoria.color,
+        precio: 8,
+        tipo: 'PREPARADO',
+        stockMinimo: 0,
+        costoUnitario: 0,
+        activo: true,
+        stock: 0,
+      ),
+    );
+    final primero = await crearPlato('Plato de la mañana');
+    final recordado = await crearPlato('Plato recordado');
+
+    final menuRepo = MenuRepository();
+    final menu = await menuRepo.crearMenu(DateTime.now(), 'ALMUERZO', admin.id);
+    await menuRepo.agregarProducto(menu.id, primero);
+    await menuRepo.habilitar(menu.id);
+
+    final cash = CashRepository();
+    final caja = await cash.abrirCaja(
+      fecha: DateTime.now(),
+      fondoInicial: 100,
+      usuarioId: admin.id,
+    );
+
+    // Cerrar el menú no es definitivo: se puede reabrir cuando se quiera.
+    await menuRepo.cerrar(menu.id);
+    expect(
+      (await menuRepo.getMenu(DateTime.now(), 'ALMUERZO'))!.cerrado,
+      isTrue,
+    );
+    await menuRepo.habilitar(menu.id);
+    expect(
+      (await menuRepo.getMenu(DateTime.now(), 'ALMUERZO'))!.habilitado,
+      isTrue,
+    );
+
+    // Un plato agregado después de habilitar queda en el menú...
+    await menuRepo.agregarProducto(menu.id, recordado);
+    final items = await menuRepo.getMenuHabilitado(DateTime.now(), 'ALMUERZO');
+    expect(items.map((item) => item.productoId), contains(recordado));
+
+    // ...y se puede vender sin problemas.
+    final itemRecordado = items.firstWhere(
+      (item) => item.productoId == recordado,
+    );
+    final sales = SalesRepository();
+    final pedidoId = await sales.crearPedido(
+      usuarioId: admin.id,
+      cajaId: caja.id,
+      menuDiaId: menu.id,
+      lineas: [
+        CartLine(
+          productoId: recordado,
+          menuDiaItemId: itemRecordado.id,
+          nombre: 'Plato recordado',
+          precio: 8,
+          cantidad: 1,
+          tipo: 'PREPARADO',
+        ),
+      ],
+      pagos: const [PagoInput(metodo: 'EFECTIVO', monto: 8)],
+    );
+    expect((await sales.getPedido(pedidoId)).pedido.total, 8);
+  });
+
+  test('el resumen muestra gasto en insumos y ganancia por producto', () async {
+    final auth = AuthRepository();
+    final admin = (await auth.login('admin', '1234'))!;
+    final catalog = CatalogRepository();
+
+    // Gasto en insumos: lo que entra al stock × costo del insumo.
+    final unidad = (await catalog.getUnidades()).first;
+    final insumoId = await catalog.saveInsumo(
+      Insumo(
+        nombre: 'Harina',
+        unidadId: unidad.id,
+        unidadAbreviatura: unidad.abreviatura,
+        unidadNombre: unidad.nombre,
+        unidadFamilia: unidad.familia,
+        unidadFactorBase: unidad.factorBase,
+        stockMinimo: 1,
+        costoPromedio: 4,
+        activo: true,
+        stock: 0,
+      ),
+    );
+    await catalog.ajustarStockInsumo(
+      insumoId: insumoId,
+      nuevoStock: 5,
+      usuarioId: admin.id,
+      motivo: 'Compra',
+    );
+
+    // Producto con costo unitario para la ganancia.
+    final categoria = (await catalog.getCategorias()).first;
+    final productoId = await catalog.saveProducto(
+      Producto(
+        nombre: 'Torta de prueba',
+        categoriaId: categoria.id!,
+        categoriaNombre: categoria.nombre,
+        categoriaColor: categoria.color,
+        precio: 10,
+        tipo: 'PREPARADO',
+        stockMinimo: 0,
+        costoUnitario: 2,
+        activo: true,
+        stock: 0,
+      ),
+    );
+    final menuRepo = MenuRepository();
+    final menu = await menuRepo.crearMenu(DateTime.now(), 'ALMUERZO', admin.id);
+    await menuRepo.agregarProducto(menu.id, productoId);
+    await menuRepo.habilitar(menu.id);
+    final cash = CashRepository();
+    final caja = await cash.abrirCaja(
+      fecha: DateTime.now(),
+      fondoInicial: 50,
+      usuarioId: admin.id,
+    );
+    final sales = SalesRepository();
+    await sales.crearPedido(
+      usuarioId: admin.id,
+      cajaId: caja.id,
+      menuDiaId: menu.id,
+      lineas: [
+        CartLine(
+          productoId: productoId,
+          menuDiaItemId: (await menuRepo.getItems(menu.id)).first.id,
+          nombre: 'Torta de prueba',
+          precio: 10,
+          cantidad: 3,
+          tipo: 'PREPARADO',
+        ),
+      ],
+      pagos: const [PagoInput(metodo: 'EFECTIVO', monto: 30)],
+    );
+
+    final reports = ReportRepository();
+    final hoy = DateTime.now();
+    final inicio = DateTime(hoy.year, hoy.month, hoy.day);
+    final fin = inicio.add(const Duration(days: 1));
+    final resumen = await reports.getResumen(inicio, fin);
+    expect(resumen.ventas, 30);
+    expect(resumen.gastoInsumos, 20); // 5 unidades × Bs 4
+    expect(
+      resumen.ganancia,
+      resumen.ventas - resumen.gastoInsumos - resumen.salidas,
+    );
+
+    final productos = await reports.getProductos(inicio, fin);
+    expect(productos.length, 1);
+    expect(productos.first.costo, 6); // 3 unidades × Bs 2
+    expect(productos.first.ganancia, 24); // Bs 30 de ventas − Bs 6 de costo
+  });
+
+  test('las categorías del almuerzo se migran a ALMUERZO COMPLETO', () async {
+    final path = join(await getDatabasesPath(), 'sazon_restaurante_v2.db');
+    // Base vieja: ALMUERZO con las subcategorías PLATO SUELTO y COMPLETO.
+    final legacy = await databaseFactory.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: 10,
+        onCreate: (db, version) async {
+          await db.execute('''
+            CREATE TABLE usuarios (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              nombre TEXT NOT NULL,
+              usuario TEXT NOT NULL UNIQUE,
+              password_hash TEXT NOT NULL,
+              rol TEXT NOT NULL CHECK (rol IN ('ADMIN','CAJERO')),
+              perfil TEXT NOT NULL DEFAULT 'CAJERO',
+              turno_asignado TEXT CHECK (turno_asignado IN ('MAÑANA','TARDE','AMBOS')),
+              sueldo_base REAL NOT NULL DEFAULT 0,
+              activo INTEGER NOT NULL DEFAULT 1,
+              creado_en TEXT NOT NULL
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE categorias_producto (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              nombre TEXT NOT NULL UNIQUE,
+              color INTEGER NOT NULL DEFAULT 4280391418,
+              siempre_disponible INTEGER NOT NULL DEFAULT 0,
+              orden INTEGER NOT NULL DEFAULT 0,
+              activo INTEGER NOT NULL DEFAULT 1,
+              parent_id INTEGER
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE productos (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              nombre TEXT NOT NULL UNIQUE,
+              categoria_id INTEGER NOT NULL,
+              descripcion TEXT,
+              precio REAL NOT NULL DEFAULT 0,
+              imagen BLOB,
+              tipo TEXT NOT NULL CHECK (tipo IN ('DIRECTO','PREPARADO')),
+              stock_minimo REAL NOT NULL DEFAULT 0,
+              costo_unitario REAL NOT NULL DEFAULT 0,
+              activo INTEGER NOT NULL DEFAULT 1,
+              creado_en TEXT NOT NULL
+            )
+          ''');
+          await db.insert('usuarios', {
+            'nombre': 'Administrador',
+            'usuario': 'admin',
+            'password_hash': hashPassword('1234'),
+            'rol': 'ADMIN',
+            'turno_asignado': 'AMBOS',
+            'sueldo_base': 0,
+            'activo': 1,
+            'creado_en': '2026-01-01 08:00:00',
+          });
+          await db.insert('categorias_producto', {
+            'id': 1,
+            'nombre': 'ALMUERZO',
+            'color': 0xFF0F766E,
+            'orden': 1,
+          });
+          await db.insert('categorias_producto', {
+            'id': 2,
+            'nombre': 'PLATO SUELTO',
+            'color': 0xFF2563EB,
+            'orden': 2,
+            'parent_id': 1,
+          });
+          await db.insert('categorias_producto', {
+            'id': 3,
+            'nombre': 'COMPLETO',
+            'color': 0xFFEA580C,
+            'orden': 3,
+            'parent_id': 1,
+          });
+          await db.insert('productos', {
+            'nombre': 'Sopa vieja',
+            'categoria_id': 2,
+            'precio': 10,
+            'tipo': 'PREPARADO',
+            'creado_en': '2026-01-01 08:00:00',
+          });
+          await db.insert('productos', {
+            'nombre': 'Completo viejo',
+            'categoria_id': 3,
+            'precio': 15,
+            'tipo': 'PREPARADO',
+            'creado_en': '2026-01-01 08:00:00',
+          });
+        },
+      ),
+    );
+    await legacy.close();
+
+    final db = await AppDatabase.instance.database;
+    final categorias = await db.query('categorias_producto', orderBy: 'id');
+    final nombres = categorias
+        .map((categoria) => categoria['nombre']! as String)
+        .toList();
+    expect(nombres, contains('ALMUERZO COMPLETO'));
+    expect(nombres, contains('SOPA'));
+    expect(nombres, contains('SEGUNDO'));
+    expect(nombres, isNot(contains('ALMUERZO')));
+    expect(nombres, isNot(contains('PLATO SUELTO')));
+    expect(nombres, isNot(contains('COMPLETO')));
+
+    // Los productos no se pierden: PLATO SUELTO → SEGUNDO y COMPLETO → padre.
+    Future<int> idDe(String nombre) async =>
+        (await db.query(
+              'categorias_producto',
+              columns: ['id'],
+              where: 'nombre = ?',
+              whereArgs: [nombre],
+            )).first['id']!
+            as int;
+    final segundoId = await idDe('SEGUNDO');
+    final padreId = await idDe('ALMUERZO COMPLETO');
+    final productos = await db.query('productos', orderBy: 'id');
+    expect(productos.first['categoria_id'], segundoId);
+    expect(productos.last['categoria_id'], padreId);
   });
 
   test('venta con receta e insumos insuficientes registra faltante', () async {

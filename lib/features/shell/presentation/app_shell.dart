@@ -330,14 +330,17 @@ class _AppShellState extends State<AppShell> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(fontWeight: FontWeight.w600),
+                              ?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFFF3E9D9), // Crema
+                              ),
                         ),
                         Text(
                           widget.usuario.esAdmin ? 'Administrador' : 'Cajero',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: scheme.onSurfaceVariant),
+                              ?.copyWith(color: const Color(0xFFE8C995)),
                         ),
                       ],
                     ),
@@ -351,8 +354,8 @@ class _AppShellState extends State<AppShell> {
 
         return Scaffold(
           appBar: AppBar(
-            backgroundColor: Colors.white,
-            surfaceTintColor: Colors.white,
+            backgroundColor: const Color(0xFF3D2419), // Espresso
+            surfaceTintColor: const Color(0xFF3D2419),
             title: Row(
               children: [
                 if (!wide) ...[
@@ -361,15 +364,18 @@ class _AppShellState extends State<AppShell> {
                 ],
                 Text(
                   appNombre,
-                  style: Theme.of(context).textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w800),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFFF3E9D9), // Crema
+                  ),
                 ),
                 if (wide) ...[
                   const SizedBox(width: 10),
                   Text(
                     '· ${current.label}',
-                    style: Theme.of(context).textTheme.titleMedium
-                        ?.copyWith(color: scheme.onSurfaceVariant),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: const Color(0xFFE8C995), // Dorado
+                    ),
                   ),
                 ],
               ],
@@ -391,13 +397,16 @@ class _AppShellState extends State<AppShell> {
                               Text(
                                 appNombre,
                                 style: Theme.of(context).textTheme.titleLarge
-                                    ?.copyWith(fontWeight: FontWeight.w800),
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                      color: const Color(0xFFF3E9D9), // Crema
+                                    ),
                               ),
                               Text(
                                 appCanal,
                                 style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(
-                                      color: scheme.onSurfaceVariant,
+                                      color: const Color(0xFFE8C995), // Dorado
                                       fontWeight: FontWeight.w600,
                                     ),
                               ),
@@ -413,6 +422,9 @@ class _AppShellState extends State<AppShell> {
                             ),
                             title: Text(destinations[i].label),
                             selected: i == index,
+                            iconColor: const Color(0xFFE8C995), // Dorado
+                            textColor: const Color(0xFFF3E9D9), // Crema
+                            selectedColor: const Color(0xFFE8C995),
                             onTap: () {
                               _seleccionar(i);
                               Navigator.pop(context);
@@ -425,6 +437,8 @@ class _AppShellState extends State<AppShell> {
                               Icons.admin_panel_settings_outlined,
                             ),
                             title: const Text('Ver como administrador'),
+                            iconColor: const Color(0xFFE8C995), // Dorado
+                            textColor: const Color(0xFFF3E9D9), // Crema
                             onTap: () {
                               Navigator.pop(context);
                               _verComoAdministrador();
@@ -434,6 +448,8 @@ class _AppShellState extends State<AppShell> {
                           ListTile(
                             leading: const Icon(Icons.switch_account_outlined),
                             title: const Text('Cambiar de usuario'),
+                            iconColor: const Color(0xFFE8C995), // Dorado
+                            textColor: const Color(0xFFF3E9D9), // Crema
                             onTap: () {
                               Navigator.pop(context);
                               _cambiarUsuario();
@@ -478,7 +494,7 @@ class _AppShellState extends State<AppShell> {
                               ),
                               child: const Icon(
                                 Icons.restaurant,
-                                color: Colors.white,
+                                color: Color(0xFF2B1A12), // Texto oscuro
                               ),
                             ),
                             if (extended) ...[
@@ -486,7 +502,10 @@ class _AppShellState extends State<AppShell> {
                               Text(
                                 appNombre,
                                 style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.w800),
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                      color: const Color(0xFFF3E9D9), // Crema
+                                    ),
                               ),
                             ],
                           ],

@@ -178,7 +178,7 @@ class _OnboardingAdminPageState extends State<OnboardingAdminPage> {
                                 ),
                                 child: const Icon(
                                   Icons.shield_outlined,
-                                  color: Colors.white,
+                                  color: Color(0xFF2B1A12), // Texto oscuro
                                   size: 27,
                                 ),
                               ),

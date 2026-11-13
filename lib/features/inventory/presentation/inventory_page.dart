@@ -567,7 +567,7 @@ class _InsumoDialogState extends State<_InsumoDialog> {
         Container(
           height: 130,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: const Color(0xFFFFF9F0), // Blanco cálido
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: scheme.outlineVariant),
           ),

@@ -574,7 +574,7 @@ InputDecoration appInput({
     suffixIcon: suffix,
     suffixText: suffixText,
     filled: true,
-    fillColor: Colors.white,
+    fillColor: const Color(0xFFFFF9F0), // Blanco cálido
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
       borderSide: BorderSide.none,

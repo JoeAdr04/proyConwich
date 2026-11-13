@@ -16,7 +16,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   /// Versión de esquema actual. Subir junto con `onUpgrade`.
-  static const int schemaVersion = 11;
+  static const int schemaVersion = 12;
 
   static const String nombreArchivo = 'sazon_restaurante_v2.db';
 
@@ -90,6 +90,7 @@ class AppDatabase {
         await _migrarPrimerAcceso(db);
         await _migrarVentaDirecta(db);
         await _migrarEstadosMenu(db);
+        await _migrarCategoriasAlmuerzo(db);
         await _afterOpen(db);
       },
     );
@@ -104,11 +105,12 @@ class AppDatabase {
   }
 
   /// Categorías base para que el menú y los productos nuevos tengan una
-  /// opción por defecto coherente. Almuerzo es la categoría principal y
-  /// Plato suelto / Completo son sus subcategorías.
+  /// opción por defecto coherente. ALMUERZO COMPLETO es la categoría principal
+  /// y Sopa / Segundo son sus subcategorías (el almuerzo del día es una sopa
+  /// y su segundo).
   Future<void> _seedCategorias(Database db) async {
     await db.insert('categorias_producto', {
-      'nombre': 'ALMUERZO',
+      'nombre': 'ALMUERZO COMPLETO',
       'color': 0xFF0F766E,
       'siempre_disponible': 0,
       'orden': 1,
@@ -118,15 +120,15 @@ class AppDatabase {
       'categorias_producto',
       columns: ['id'],
       where: 'nombre = ? COLLATE NOCASE',
-      whereArgs: ['ALMUERZO'],
+      whereArgs: ['ALMUERZO COMPLETO'],
       limit: 1,
     );
     if (padres.isEmpty) return;
     final padreId = padres.first['id']! as int;
 
     const hijas = [
-      {'nombre': 'PLATO SUELTO', 'color': 0xFF2563EB, 'orden': 2},
-      {'nombre': 'COMPLETO', 'color': 0xFFEA580C, 'orden': 3},
+      {'nombre': 'SOPA', 'color': 0xFF2563EB, 'orden': 2},
+      {'nombre': 'SEGUNDO', 'color': 0xFFEA580C, 'orden': 3},
     ];
     for (final hija in hijas) {
       await db.insert('categorias_producto', {
@@ -827,6 +829,93 @@ class AppDatabase {
       await db.execute('ALTER TABLE cajas_nueva RENAME TO cajas');
     } catch (error) {
       debugPrint('No se pudieron migrar los turnos de caja: $error');
+    }
+  }
+
+  /// El almuerzo del día es una sopa y su segundo: ALMUERZO pasa a llamarse
+  /// ALMUERZO COMPLETO, PLATO SUELTO pasa a SEGUNDO y COMPLETO se elimina
+  /// (sus productos quedan en la categoría principal).
+  Future<void> _migrarCategoriasAlmuerzo(Database db) async {
+    try {
+      Future<int?> idDe(String nombre) async {
+        final rows = await db.query(
+          'categorias_producto',
+          columns: ['id'],
+          where: 'nombre = ? COLLATE NOCASE',
+          whereArgs: [nombre],
+          limit: 1,
+        );
+        return rows.isEmpty ? null : rows.first['id']! as int;
+      }
+
+      // Categoría principal: ALMUERZO → ALMUERZO COMPLETO.
+      var padreId = await idDe('ALMUERZO COMPLETO');
+      final viejoPadreId = await idDe('ALMUERZO');
+      if (padreId == null && viejoPadreId != null) {
+        await db.update(
+          'categorias_producto',
+          {'nombre': 'ALMUERZO COMPLETO'},
+          where: 'id = ?',
+          whereArgs: [viejoPadreId],
+        );
+        padreId = viejoPadreId;
+      } else if (padreId != null && viejoPadreId != null) {
+        await db.update(
+          'productos',
+          {'categoria_id': padreId},
+          where: 'categoria_id = ?',
+          whereArgs: [viejoPadreId],
+        );
+        await db.delete(
+          'categorias_producto',
+          where: 'id = ?',
+          whereArgs: [viejoPadreId],
+        );
+      }
+      if (padreId == null) return;
+
+      // PLATO SUELTO → SEGUNDO.
+      var segundoId = await idDe('SEGUNDO');
+      final platoSueltoId = await idDe('PLATO SUELTO');
+      if (segundoId == null && platoSueltoId != null) {
+        await db.update(
+          'categorias_producto',
+          {'nombre': 'SEGUNDO'},
+          where: 'id = ?',
+          whereArgs: [platoSueltoId],
+        );
+        segundoId = platoSueltoId;
+      } else if (segundoId != null && platoSueltoId != null) {
+        await db.update(
+          'productos',
+          {'categoria_id': segundoId},
+          where: 'categoria_id = ?',
+          whereArgs: [platoSueltoId],
+        );
+        await db.delete(
+          'categorias_producto',
+          where: 'id = ?',
+          whereArgs: [platoSueltoId],
+        );
+      }
+
+      // COMPLETO se elimina: sus productos pasan a la categoría principal.
+      final completoId = await idDe('COMPLETO');
+      if (completoId != null) {
+        await db.update(
+          'productos',
+          {'categoria_id': padreId},
+          where: 'categoria_id = ?',
+          whereArgs: [completoId],
+        );
+        await db.delete(
+          'categorias_producto',
+          where: 'id = ?',
+          whereArgs: [completoId],
+        );
+      }
+    } catch (error) {
+      debugPrint('No se pudieron migrar las categorías del almuerzo: $error');
     }
   }
 

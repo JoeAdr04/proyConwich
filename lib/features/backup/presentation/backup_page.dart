@@ -321,8 +321,8 @@ class _BackupPageState extends State<BackupPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Respaldo y restauración'),
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: const Color(0xFF3D2419), // Espresso
+        surfaceTintColor: const Color(0xFF3D2419),
       ),
       body: _cargando
           ? const LoadingView()
