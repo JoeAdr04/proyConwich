@@ -16,6 +16,7 @@ class CartLine {
   const CartLine({
     required this.productoId,
     this.menuDiaItemId,
+    this.menuDiaComboId,
     required this.nombre,
     required this.precio,
     required this.cantidad,
@@ -26,6 +27,7 @@ class CartLine {
 
   final int productoId;
   final int? menuDiaItemId;
+  final int? menuDiaComboId;
   final String nombre;
   final double precio;
   final double cantidad;
@@ -38,6 +40,7 @@ class CartLine {
   CartLine copyWith({double? cantidad, String? observacion}) => CartLine(
     productoId: productoId,
     menuDiaItemId: menuDiaItemId,
+    menuDiaComboId: menuDiaComboId,
     nombre: nombre,
     precio: precio,
     cantidad: cantidad ?? this.cantidad,
@@ -89,6 +92,7 @@ class PedidoLinea {
     required this.precioUnitario,
     required this.subtotal,
     this.observacion,
+    this.esComponente = false,
   });
 
   final int id;
@@ -99,6 +103,7 @@ class PedidoLinea {
   final double precioUnitario;
   final double subtotal;
   final String? observacion;
+  final bool esComponente;
 }
 
 class Pago {
@@ -205,9 +210,10 @@ class SalesRepository {
               nombre: row['nombre_producto']! as String,
               cantidad: (row['cantidad'] as num).toDouble(),
               precioUnitario: (row['precio_unitario'] as num).toDouble(),
-              subtotal: (row['subtotal'] as num).toDouble(),
-              observacion: row['observacion'] as String?,
-            ),
+               subtotal: (row['subtotal'] as num).toDouble(),
+               observacion: row['observacion'] as String?,
+               esComponente: (row['es_componente'] as num?)?.toInt() == 1,
+             ),
           )
           .toList(),
       pagos: pagos
@@ -278,9 +284,10 @@ class SalesRepository {
           'precio_unitario': linea.precio,
           'subtotal': linea.subtotal,
           'costo_unitario': linea.costoUnitario,
+          'es_componente': 0,
           'observacion': _limpiar(linea.observacion),
         });
-        await _consumirReceta(
+        await _consumirProducto(
           txn,
           productoId: linea.productoId,
           cantidad: linea.cantidad,
@@ -333,9 +340,10 @@ class SalesRepository {
           'precio_unitario': linea.precio,
           'subtotal': linea.subtotal,
           'costo_unitario': linea.costoUnitario,
+          'es_componente': 0,
           'observacion': _limpiar(linea.observacion),
         });
-        await _consumirReceta(
+        await _consumirProducto(
           txn,
           productoId: linea.productoId,
           cantidad: linea.cantidad,
@@ -453,6 +461,42 @@ class SalesRepository {
   ) async {
     final result = <CartLine>[];
     for (final linea in lineas) {
+      if (linea.menuDiaComboId != null) {
+        final comboRows = await db.rawQuery(
+          '''
+          SELECT mc.producto_id, mc.nombre, mc.precio, mc.disponible,
+                 p.tipo, p.costo_unitario, p.activo
+          FROM menu_dia_combos mc
+          INNER JOIN productos p ON p.id = mc.producto_id
+          WHERE mc.id = ?
+          LIMIT 1
+        ''',
+          [linea.menuDiaComboId],
+        );
+        if (comboRows.isEmpty) {
+          throw StateError('El combo del pedido ya no existe.');
+        }
+        final combo = comboRows.first;
+        if ((combo['activo'] as num).toInt() != 1) {
+          throw StateError('El combo ${combo['nombre']} está inactivo.');
+        }
+        if ((combo['disponible'] as num).toInt() != 1) {
+          throw StateError('El combo ${combo['nombre']} está agotado hoy.');
+        }
+        result.add(
+          CartLine(
+            productoId: combo['producto_id']! as int,
+            menuDiaComboId: linea.menuDiaComboId,
+            nombre: combo['nombre']! as String,
+            precio: (combo['precio'] as num).toDouble(),
+            cantidad: linea.cantidad,
+            observacion: linea.observacion,
+            tipo: combo['tipo']! as String,
+            costoUnitario: (combo['costo_unitario'] as num).toDouble(),
+          ),
+        );
+        continue;
+      }
       final rows = await db.query(
         'productos',
         columns: ['nombre', 'precio', 'tipo', 'costo_unitario', 'activo'],
@@ -514,6 +558,80 @@ class SalesRepository {
             .nombre;
         throw StateError('$nombre: $motivo');
       }
+    }
+  }
+
+  /// Consume una línea del pedido. Si el producto es compuesto, recorre sus
+  /// componentes y registra una línea hija por cada uno. Así el stock de los
+  /// productos directos se descuenta y las recetas de los preparados se
+  /// consumen sin obligar a ningún producto a tener receta.
+  Future<void> _consumirProducto(
+    DatabaseExecutor txn, {
+    required int productoId,
+    required double cantidad,
+    required int pedidoId,
+    required int detalleId,
+    required String fecha,
+    Set<int>? visitados,
+  }) async {
+    final vistos = visitados ?? <int>{};
+    if (!vistos.add(productoId)) return;
+    final rows = await txn.query(
+      'productos',
+      columns: ['es_compuesto'],
+      where: 'id = ?',
+      whereArgs: [productoId],
+      limit: 1,
+    );
+    final compuesto =
+        rows.isNotEmpty &&
+        ((rows.first['es_compuesto'] as num?)?.toInt() ?? 0) == 1;
+    if (!compuesto) {
+      await _consumirReceta(
+        txn,
+        productoId: productoId,
+        cantidad: cantidad,
+        pedidoId: pedidoId,
+        detalleId: detalleId,
+        fecha: fecha,
+      );
+      return;
+    }
+    final componentes = await txn.rawQuery(
+      '''
+      SELECT pc.componente_id, pc.cantidad, p.nombre, p.costo_unitario
+      FROM producto_componentes pc
+      INNER JOIN productos p ON p.id = pc.componente_id
+      WHERE pc.producto_id = ?
+      ORDER BY pc.orden
+    ''',
+      [productoId],
+    );
+    for (final componente in componentes) {
+      final componenteId = componente['componente_id']! as int;
+      final cantidadComponente =
+          (componente['cantidad'] as num).toDouble() * cantidad;
+      final componenteDetalleId = await txn.insert('detalle_pedido', {
+        'pedido_id': pedidoId,
+        'producto_id': componenteId,
+        'menu_dia_item_id': null,
+        'nombre_producto': componente['nombre']! as String,
+        'cantidad': cantidadComponente,
+        'precio_unitario': 0,
+        'subtotal': 0,
+        'costo_unitario': (componente['costo_unitario'] as num).toDouble(),
+        'es_componente': 1,
+        'observacion': null,
+      });
+      await _consumirProducto(
+        txn,
+        productoId: componenteId,
+        cantidad: cantidadComponente,
+        pedidoId: pedidoId,
+        detalleId: componenteDetalleId,
+        fecha: fecha,
+        visitados: vistos,
+      );
     }
   }
 

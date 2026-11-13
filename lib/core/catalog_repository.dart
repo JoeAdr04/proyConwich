@@ -71,6 +71,7 @@ class Producto {
     required this.stock,
     this.categoriaSiempreDisponible = false,
     this.insumoVinculadoId,
+    this.esCompuesto = false,
   });
 
   final int? id;
@@ -95,12 +96,37 @@ class Producto {
   /// Insumo del que se generó este producto de venta directa.
   final int? insumoVinculadoId;
 
+  /// Producto compuesto (almuerzo completo o combo) armado desde el menú.
+  final bool esCompuesto;
+
   bool get esDirecto => tipo == 'DIRECTO';
   bool get esVentaDirecta => insumoVinculadoId != null;
 
   String get categoriaEtiqueta => categoriaParentNombre == null
       ? categoriaNombre
       : '$categoriaParentNombre · $categoriaNombre';
+}
+
+class ProductoComponente {
+  const ProductoComponente({
+    required this.componenteId,
+    required this.nombre,
+    required this.precio,
+    required this.categoriaNombre,
+    required this.categoriaColor,
+    this.cantidad = 1,
+    this.orden = 0,
+    this.imagen,
+  });
+
+  final int componenteId;
+  final String nombre;
+  final double precio;
+  final String categoriaNombre;
+  final int categoriaColor;
+  final double cantidad;
+  final int orden;
+  final Uint8List? imagen;
 }
 
 class Insumo {
@@ -198,7 +224,7 @@ class CatalogRepository {
     final values = <String, Object?>{
       'nombre': categoria.nombre.trim().toUpperCase(),
       'color': categoria.color,
-      'parent_id': categoria.parentId,
+      'parent_id': null,
       'siempre_disponible': categoria.siempreDisponible ? 1 : 0,
       'orden': categoria.orden,
       'activo': categoria.activo ? 1 : 0,
@@ -311,6 +337,7 @@ class CatalogRepository {
       'precio': producto.precio,
       'imagen': producto.imagen,
       'tipo': producto.tipo,
+      'es_compuesto': producto.esCompuesto ? 1 : 0,
       'stock_minimo': producto.esDirecto ? producto.stockMinimo : 0,
       'costo_unitario': producto.costoUnitario,
       'activo': producto.activo ? 1 : 0,
@@ -344,6 +371,104 @@ class CatalogRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  Future<List<ProductoComponente>> getComponentes(int productoId) async {
+    final db = await AppDatabase.instance.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT pc.componente_id, pc.cantidad, pc.orden,
+             p.nombre, p.precio, p.imagen,
+             c.nombre AS categoria_nombre, c.color AS categoria_color
+      FROM producto_componentes pc
+      INNER JOIN productos p ON p.id = pc.componente_id
+      INNER JOIN categorias_producto c ON c.id = p.categoria_id
+      WHERE pc.producto_id = ?
+      ORDER BY pc.orden, p.nombre COLLATE NOCASE
+    ''',
+      [productoId],
+    );
+    return rows
+        .map(
+          (row) => ProductoComponente(
+            componenteId: row['componente_id']! as int,
+            nombre: row['nombre']! as String,
+            precio: (row['precio'] as num).toDouble(),
+            categoriaNombre: row['categoria_nombre']! as String,
+            categoriaColor: (row['categoria_color'] as num).toInt(),
+            cantidad: (row['cantidad'] as num?)?.toDouble() ?? 1,
+            orden: (row['orden'] as num?)?.toInt() ?? 0,
+            imagen: _asBytes(row['imagen']),
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> saveComponentes(int productoId, List<int> componenteIds) async {
+    final db = await AppDatabase.instance.database;
+    final ids = componenteIds.where((id) => id != productoId).toSet().toList();
+    await db.transaction((txn) async {
+      await txn.delete(
+        'producto_componentes',
+        where: 'producto_id = ?',
+        whereArgs: [productoId],
+      );
+      var orden = 0;
+      for (final componenteId in ids) {
+        orden++;
+        await txn.insert('producto_componentes', {
+          'producto_id': productoId,
+          'componente_id': componenteId,
+          'cantidad': 1,
+          'orden': orden,
+        });
+      }
+    });
+  }
+
+  Future<int> crearProductoCompuesto({
+    required String nombre,
+    required int categoriaId,
+    required double precio,
+    required List<int> componenteIds,
+  }) async {
+    final db = await AppDatabase.instance.database;
+    final id = await db.insert('productos', {
+      'nombre': nombre.trim(),
+      'categoria_id': categoriaId,
+      'descripcion': 'Almuerzo o combo armado con varios productos.',
+      'precio': precio,
+      'tipo': 'PREPARADO',
+      'es_compuesto': 1,
+      'stock_minimo': 0,
+      'costo_unitario': 0,
+      'activo': 1,
+      'creado_en': sqlNow(),
+    });
+    await saveComponentes(id, componenteIds);
+    return id;
+  }
+
+  Future<void> actualizarProductoCompuesto({
+    required int productoId,
+    required String nombre,
+    required double precio,
+    required List<int> componenteIds,
+  }) async {
+    final db = await AppDatabase.instance.database;
+    await db.update(
+      'productos',
+      {
+        'nombre': nombre.trim(),
+        'precio': precio,
+        'es_compuesto': 1,
+        'tipo': 'PREPARADO',
+        'activo': 1,
+      },
+      where: 'id = ?',
+      whereArgs: [productoId],
+    );
+    await saveComponentes(productoId, componenteIds);
   }
 
   Future<List<RecetaLinea>> getReceta(int productoId) async {
@@ -641,12 +766,30 @@ class CatalogRepository {
     return rows.isEmpty ? 0 : (rows.first['stock'] as num).toDouble();
   }
 
-  Future<String?> motivoNoDisponible(int productoId, double cantidad) async {
+  Future<String?> motivoNoDisponible(int productoId, double cantidad) =>
+      _motivoNoDisponible(productoId, cantidad, <int>{});
+
+  Future<String?> _motivoNoDisponible(
+    int productoId,
+    double cantidad,
+    Set<int> visitados,
+  ) async {
+    if (!visitados.add(productoId)) return null;
     final producto = await getProducto(productoId);
     if (producto == null || !producto.activo) return 'Producto inactivo';
     if (producto.esDirecto) {
       if (producto.stock < cantidad) {
         return 'Sin stock (quedan ${producto.stock.toStringAsFixed(0)})';
+      }
+    }
+    if (producto.esCompuesto) {
+      for (final componente in await getComponentes(productoId)) {
+        final motivo = await _motivoNoDisponible(
+          componente.componenteId,
+          cantidad * componente.cantidad,
+          visitados,
+        );
+        if (motivo != null) return '${componente.nombre}: $motivo';
       }
     }
     // Los productos con receta no se bloquean por falta de insumos: la receta
@@ -657,6 +800,21 @@ class CatalogRepository {
   /// Aviso no bloqueante cuando un producto con receta no tiene insumos
   /// suficientes. Los productos sin receta no generan advertencias.
   Future<String?> advertenciaInsumos(int productoId, double cantidad) async {
+    final producto = await getProducto(productoId);
+    if (producto == null) return null;
+    if (producto.esCompuesto) {
+      final faltantes = <String>[];
+      for (final componente in await getComponentes(productoId)) {
+        final aviso = await advertenciaInsumos(
+          componente.componenteId,
+          cantidad * componente.cantidad,
+        );
+        if (aviso != null) faltantes.add(aviso);
+      }
+      return faltantes.isEmpty
+          ? null
+          : 'Faltan insumos en: ${faltantes.join(' · ')}';
+    }
     final receta = await getReceta(productoId);
     if (receta.isEmpty) return null;
     final faltantes = <String>[];
@@ -730,6 +888,7 @@ class CatalogRepository {
     categoriaSiempreDisponible:
         (row['categoria_siempre_disponible'] as num?)?.toInt() == 1,
     insumoVinculadoId: row['insumo_vinculado_id'] as int?,
+    esCompuesto: (row['es_compuesto'] as num?)?.toInt() == 1,
   );
 
   Insumo _insumoFromRow(Map<String, Object?> row) => Insumo(

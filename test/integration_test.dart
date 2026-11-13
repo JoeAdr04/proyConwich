@@ -1000,7 +1000,7 @@ void main() {
             )
           ''');
             await db.insert('categorias_producto', {
-              'nombre': 'Bebidas',
+              'nombre': 'Postres',
               'color': 0xFF2563EB,
             });
           },
@@ -1011,26 +1011,26 @@ void main() {
       final db = await AppDatabase.instance.database;
       final categorias = await db.query('categorias_producto');
       expect(
-        categorias.any((categoria) => categoria['nombre'] == 'BEBIDAS'),
+        categorias.any((categoria) => categoria['nombre'] == 'POSTRES'),
         isTrue,
       );
       expect(
-        categorias.any((categoria) => categoria['nombre'] == 'Bebidas'),
+        categorias.any((categoria) => categoria['nombre'] == 'Postres'),
         isFalse,
       );
       expect(
         categorias.any(
           (categoria) => categoria['nombre'] == 'ALMUERZO COMPLETO',
         ),
-        isTrue,
+        isFalse,
       );
       expect(
         categorias.any((categoria) => categoria['nombre'] == 'SOPA'),
-        isTrue,
+        isFalse,
       );
       expect(
         categorias.any((categoria) => categoria['nombre'] == 'SEGUNDO'),
-        isTrue,
+        isFalse,
       );
     },
   );
@@ -1080,26 +1080,25 @@ void main() {
     expect(items.length, 1);
   });
 
-  test('ALMUERZO COMPLETO tiene las subcategorías SOPA y SEGUNDO', () async {
+  test('las categorías base son planas y usan los nombres nuevos', () async {
     await AuthRepository().login('admin', '1234');
     final catalog = CatalogRepository();
     final categorias = await catalog.getCategorias();
+    final nombres = categorias.map((categoria) => categoria.nombre).toList();
     expect(
-      categorias.any((categoria) => categoria.nombre == 'DESAYUNO'),
-      isFalse,
+      nombres,
+      containsAll([
+        'PLATOS SUELTOS',
+        'SOPAS',
+        'BEBIDAS CALIENTES',
+        'REFRESCOS',
+        'FRAPPES',
+      ]),
     );
-    final almuerzo = categorias.firstWhere(
-      (categoria) => categoria.nombre == 'ALMUERZO COMPLETO',
-    );
-    expect(almuerzo.parentId, isNull);
-    final sopa = categorias.firstWhere(
-      (categoria) => categoria.nombre == 'SOPA',
-    );
-    final segundo = categorias.firstWhere(
-      (categoria) => categoria.nombre == 'SEGUNDO',
-    );
-    expect(sopa.parentId, almuerzo.id);
-    expect(segundo.parentId, almuerzo.id);
+    expect(nombres, isNot(contains('ALMUERZO COMPLETO')));
+    expect(nombres, isNot(contains('SOPA')));
+    expect(nombres, isNot(contains('SEGUNDO')));
+    expect(categorias.every((categoria) => categoria.parentId == null), isTrue);
   });
 
   test('un admin puede elevar la sesión con su contraseña', () async {
@@ -1551,27 +1550,39 @@ void main() {
     final nombres = categorias
         .map((categoria) => categoria['nombre']! as String)
         .toList();
-    expect(nombres, contains('ALMUERZO COMPLETO'));
-    expect(nombres, contains('SOPA'));
-    expect(nombres, contains('SEGUNDO'));
+    expect(
+      nombres,
+      containsAll([
+        'PLATOS SUELTOS',
+        'SOPAS',
+        'BEBIDAS CALIENTES',
+        'REFRESCOS',
+        'FRAPPES',
+      ]),
+    );
     expect(nombres, isNot(contains('ALMUERZO')));
     expect(nombres, isNot(contains('PLATO SUELTO')));
     expect(nombres, isNot(contains('COMPLETO')));
+    expect(
+      categorias.every((categoria) => categoria['parent_id'] == null),
+      isTrue,
+    );
 
-    // Los productos no se pierden: PLATO SUELTO → SEGUNDO y COMPLETO → padre.
-    Future<int> idDe(String nombre) async =>
+    // Los productos no se pierden: ambos pasan a PLATOS SUELTOS.
+    final platosId =
         (await db.query(
               'categorias_producto',
               columns: ['id'],
               where: 'nombre = ?',
-              whereArgs: [nombre],
+              whereArgs: ['PLATOS SUELTOS'],
             )).first['id']!
             as int;
-    final segundoId = await idDe('SEGUNDO');
-    final padreId = await idDe('ALMUERZO COMPLETO');
     final productos = await db.query('productos', orderBy: 'id');
-    expect(productos.first['categoria_id'], segundoId);
-    expect(productos.last['categoria_id'], padreId);
+    expect(productos.length, 2);
+    expect(
+      productos.every((producto) => producto['categoria_id'] == platosId),
+      isTrue,
+    );
   });
 
   test('venta con receta e insumos insuficientes registra faltante', () async {
@@ -1745,5 +1756,137 @@ void main() {
     final db = await AppDatabase.instance.database;
     expect(await db.query('consumos_insumo'), isEmpty);
     expect(await db.query('faltantes_insumo'), isEmpty);
+  });
+
+  test('un almuerzo armado se vende y consume solo las recetas existentes', () async {
+    final admin = (await AuthRepository().login('admin', '1234'))!;
+    final catalog = CatalogRepository();
+    final categorias = await catalog.getCategorias();
+    final sopas = categorias.firstWhere(
+      (categoria) => categoria.nombre == 'SOPAS',
+    );
+    final platos = categorias.firstWhere(
+      (categoria) => categoria.nombre == 'PLATOS SUELTOS',
+    );
+    final unidad = (await catalog.getUnidades()).firstWhere(
+      (item) => item.abreviatura == 'und',
+    );
+    final insumoId = await catalog.saveInsumo(
+      Insumo(
+        nombre: 'Insumo de sopa',
+        unidadId: unidad.id,
+        unidadAbreviatura: unidad.abreviatura,
+        stockMinimo: 0,
+        costoPromedio: 2,
+        activo: true,
+        stock: 0,
+      ),
+    );
+    await catalog.ajustarStockInsumo(
+      insumoId: insumoId,
+      nuevoStock: 10,
+      usuarioId: admin.id,
+      motivo: 'Carga inicial',
+    );
+
+    Producto producto(String nombre, CategoriaProducto categoria, double precio) =>
+        Producto(
+          nombre: nombre,
+          categoriaId: categoria.id!,
+          categoriaNombre: categoria.nombre,
+          categoriaColor: categoria.color,
+          precio: precio,
+          tipo: 'PREPARADO',
+          stockMinimo: 0,
+          costoUnitario: 0,
+          activo: true,
+          stock: 0,
+        );
+
+    final sopaId = await catalog.saveProducto(
+      producto('Sopa del día', sopas, 8),
+    );
+    await catalog.saveRecetaCantidades(sopaId, {insumoId: 2});
+    final segundoId = await catalog.saveProducto(
+      producto('Segundo del día', platos, 12),
+    );
+
+    final comboId = await catalog.crearProductoCompuesto(
+      nombre: 'Almuerzo armado',
+      categoriaId: platos.id!,
+      precio: 18,
+      componenteIds: [sopaId, segundoId],
+    );
+    final combo = (await catalog.getProducto(comboId))!;
+    expect(combo.esCompuesto, isTrue);
+    expect((await catalog.getComponentes(comboId)).length, 2);
+
+    final menuRepo = MenuRepository();
+    final fecha = DateTime.now();
+    final menu = await menuRepo.crearMenu(fecha, 'ALMUERZO', admin.id);
+    await menuRepo.agregarCombo(
+      menuDiaId: menu.id,
+      productoId: comboId,
+      nombre: 'Almuerzo armado',
+      precio: 18,
+    );
+    await menuRepo.habilitar(menu.id);
+
+    final combos = await menuRepo.getCombos(menu.id);
+    expect(combos.length, 1);
+    expect(combos.first.sumaComponentes, 20);
+
+    final cash = CashRepository();
+    final caja = await cash.abrirCaja(
+      fecha: fecha,
+      fondoInicial: 0,
+      usuarioId: admin.id,
+    );
+    final venta = await SalesRepository().crearPedido(
+      usuarioId: admin.id,
+      cajaId: caja.id,
+      menuDiaId: menu.id,
+      lineas: [
+        CartLine(
+          productoId: comboId,
+          menuDiaComboId: combos.first.id,
+          nombre: 'Nombre enviado por el cliente',
+          precio: 999,
+          cantidad: 1,
+        ),
+      ],
+      pagos: const [PagoInput(metodo: 'EFECTIVO', monto: 18)],
+    );
+
+    final detalle = await SalesRepository().getPedido(venta);
+    final principales = detalle.lineas.where((linea) => !linea.esComponente);
+    final componentes = detalle.lineas.where((linea) => linea.esComponente);
+    expect(detalle.pedido.total, 18);
+    expect(principales.length, 1);
+    expect(principales.first.nombre, 'Almuerzo armado');
+    expect(componentes.length, 2);
+
+    final db = await AppDatabase.instance.database;
+    final consumos = await db.query('consumos_insumo');
+    expect(consumos.length, 1);
+    expect((consumos.first['cantidad'] as num).toDouble(), 2);
+
+    final productos = await ReportRepository().getProductos(
+      DateTime(fecha.year, fecha.month, fecha.day),
+      DateTime(fecha.year, fecha.month, fecha.day + 1),
+    );
+    expect(productos.length, 1);
+    expect(productos.first.nombre, 'Almuerzo armado');
+    expect(productos.first.cantidad, 1);
+    expect(productos.first.ventas, 18);
+
+    final siguiente = await menuRepo.duplicarAnterior(
+      fecha.add(const Duration(days: 1)),
+      MenuRepository.tipoMenu,
+      admin.id,
+    );
+    expect(siguiente, isNotNull);
+    expect(siguiente!.habilitado, isTrue);
+    expect((await menuRepo.getCombos(siguiente.id)).length, 1);
   });
 }

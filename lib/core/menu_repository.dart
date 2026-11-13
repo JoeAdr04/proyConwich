@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../data/database/app_database.dart';
+import 'catalog_repository.dart';
 import 'date_utils.dart';
 
 class MenuDia {
@@ -48,6 +51,39 @@ class MenuItem {
   final bool disponible;
   final String? motivoAgotado;
   final int orden;
+}
+
+class MenuCombo {
+  const MenuCombo({
+    required this.id,
+    required this.menuDiaId,
+    required this.productoId,
+    required this.nombre,
+    required this.precio,
+    required this.categoriaNombre,
+    required this.categoriaColor,
+    required this.disponible,
+    required this.orden,
+    required this.componentes,
+    this.imagen,
+  });
+
+  final int id;
+  final int menuDiaId;
+  final int productoId;
+  final String nombre;
+  final double precio;
+  final String categoriaNombre;
+  final int categoriaColor;
+  final bool disponible;
+  final int orden;
+  final List<ProductoComponente> componentes;
+  final Uint8List? imagen;
+
+  double get sumaComponentes => componentes.fold<double>(
+    0,
+    (suma, componente) => suma + componente.precio * componente.cantidad,
+  );
 }
 
 class MenuRepository {
@@ -121,6 +157,40 @@ class MenuRepository {
         'orden': item['orden'],
       }, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
+    final combos = await db.query(
+      'menu_dia_combos',
+      where: 'menu_dia_id = ?',
+      whereArgs: [anterior.id],
+      orderBy: 'orden',
+    );
+    for (final combo in combos) {
+      await db.insert('menu_dia_combos', {
+        'menu_dia_id': nuevo.id,
+        'producto_id': combo['producto_id'],
+        'nombre': combo['nombre'],
+        'precio': combo['precio'],
+        'descuento_porcentaje': 0,
+        'disponible': 1,
+        'orden': combo['orden'],
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+    // El menú del día siguiente conserva la publicación anterior para que se
+    // pueda vender sin volver a publicarlo. Un borrador sigue siendo borrador.
+    if (anterior.habilitado) {
+      await db.update(
+        'menus_dia',
+        {'estado': 'HABILITADO', 'habilitado_en': sqlNow()},
+        where: 'id = ?',
+        whereArgs: [nuevo.id],
+      );
+      return MenuDia(
+        id: nuevo.id,
+        fecha: nuevo.fecha,
+        tipo: nuevo.tipo,
+        estado: 'HABILITADO',
+        observacion: nuevo.observacion,
+      );
+    }
     return nuevo;
   }
 
@@ -157,6 +227,95 @@ class MenuRepository {
         .toList();
   }
 
+  Future<List<MenuCombo>> getCombos(int menuDiaId) async {
+    final db = await AppDatabase.instance.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT mc.*, p.nombre AS producto_nombre, p.imagen,
+             c.nombre AS categoria_nombre, c.color AS categoria_color
+      FROM menu_dia_combos mc
+      INNER JOIN productos p ON p.id = mc.producto_id
+      INNER JOIN categorias_producto c ON c.id = p.categoria_id
+      WHERE mc.menu_dia_id = ?
+      ORDER BY mc.orden, mc.nombre COLLATE NOCASE
+    ''',
+      [menuDiaId],
+    );
+    final catalog = CatalogRepository();
+    final combos = <MenuCombo>[];
+    for (final row in rows) {
+      final productoId = row['producto_id']! as int;
+      combos.add(
+        MenuCombo(
+          id: row['id']! as int,
+          menuDiaId: row['menu_dia_id']! as int,
+          productoId: productoId,
+          nombre: row['nombre']! as String,
+          precio: (row['precio'] as num).toDouble(),
+          categoriaNombre: row['categoria_nombre']! as String,
+          categoriaColor: (row['categoria_color'] as num).toInt(),
+          disponible: (row['disponible'] as num).toInt() == 1,
+          orden: (row['orden'] as num?)?.toInt() ?? 0,
+          componentes: await catalog.getComponentes(productoId),
+          imagen: _asBytes(row['imagen']),
+        ),
+      );
+    }
+    return combos;
+  }
+
+  Future<int> agregarCombo({
+    required int menuDiaId,
+    required int productoId,
+    required String nombre,
+    required double precio,
+  }) async {
+    final db = await AppDatabase.instance.database;
+    final maxRows = await db.rawQuery(
+      'SELECT COALESCE(MAX(orden), 0) AS maximo FROM menu_dia_combos WHERE menu_dia_id = ?',
+      [menuDiaId],
+    );
+    final orden = ((maxRows.first['maximo'] as num?)?.toInt() ?? 0) + 1;
+    return db.insert('menu_dia_combos', {
+      'menu_dia_id': menuDiaId,
+      'producto_id': productoId,
+      'nombre': nombre,
+      'precio': precio,
+      'descuento_porcentaje': 0,
+      'disponible': 1,
+      'orden': orden,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> actualizarCombo(
+    int comboId, {
+    required String nombre,
+    required double precio,
+  }) async {
+    final db = await AppDatabase.instance.database;
+    await db.update(
+      'menu_dia_combos',
+      {'nombre': nombre, 'precio': precio},
+      where: 'id = ?',
+      whereArgs: [comboId],
+    );
+  }
+
+  Future<void> setComboDisponible(int comboId, bool disponible) async {
+    final db = await AppDatabase.instance.database;
+    await db.update(
+      'menu_dia_combos',
+      {'disponible': disponible ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [comboId],
+    );
+  }
+
+  Future<void> quitarCombo(int comboId) async {
+    final db = await AppDatabase.instance.database;
+    await db.delete('menu_dia_combos', where: 'id = ?', whereArgs: [comboId]);
+  }
+
   Future<void> agregarProducto(int menuDiaId, int productoId) async {
     final db = await AppDatabase.instance.database;
     final maxRows = await db.rawQuery(
@@ -191,6 +350,23 @@ class MenuRepository {
           'orden': orden,
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
+    });
+  }
+
+  /// Deja el menú sin platos ni combos.
+  Future<void> limpiarMenu(int menuDiaId) async {
+    final db = await AppDatabase.instance.database;
+    await db.transaction((txn) async {
+      await txn.delete(
+        'menu_dia_items',
+        where: 'menu_dia_id = ?',
+        whereArgs: [menuDiaId],
+      );
+      await txn.delete(
+        'menu_dia_combos',
+        where: 'menu_dia_id = ?',
+        whereArgs: [menuDiaId],
+      );
     });
   }
 
@@ -274,4 +450,10 @@ class MenuRepository {
     estado: row['estado']! as String,
     observacion: row['observacion'] as String?,
   );
+
+  static Uint8List? _asBytes(Object? value) {
+    if (value is Uint8List) return value;
+    if (value is List<int>) return Uint8List.fromList(value);
+    return null;
+  }
 }

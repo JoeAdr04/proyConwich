@@ -129,20 +129,7 @@ class _ProductsPageState extends State<ProductsPage> {
   }
 
   Set<int> _categoriaIdsIncluidos(List<CategoriaProducto> categorias) {
-    final categoriaId = _categoriaId!;
-    final seleccionada = categorias.where(
-      (categoria) => categoria.id == categoriaId,
-    );
-    if (seleccionada.any((categoria) => categoria.esSubcategoria)) {
-      return {categoriaId};
-    }
-
-    return {
-      categoriaId,
-      for (final categoria in categorias)
-        if (categoria.parentId == categoriaId && categoria.id != null)
-          categoria.id!,
-    };
+    return {_categoriaId!};
   }
 
   Future<void> _ajustarStock(Producto producto) async {
@@ -242,9 +229,7 @@ class _ProductsPageState extends State<ProductsPage> {
                             (categoria) => DropdownMenuItem<int?>(
                               value: categoria.id,
                               child: Text(
-                                categoria.esSubcategoria
-                                    ? '   ${categoria.nombreCompleto}'
-                                    : categoria.nombre,
+                                categoria.nombre,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -289,7 +274,8 @@ class _ProductsPageState extends State<ProductsPage> {
                     child: _ProductRow(
                       producto: producto,
                       onEdit: () => _openForm(producto),
-                      onRecipe: producto.esVentaDirecta
+                      onRecipe:
+                          producto.esVentaDirecta || producto.esCompuesto
                           ? null
                           : () => _openRecipe(producto),
                       onAjustarStock: producto.esDirecto
@@ -349,6 +335,8 @@ class _ProductRow extends StatelessWidget {
     );
     final etiqueta = producto.esVentaDirecta
         ? 'Venta directa'
+        : producto.esCompuesto
+        ? 'Almuerzo o combo armado'
         : producto.esDirecto
         ? 'Directo (legado)'
         : 'Preparado · receta opcional';
@@ -371,6 +359,14 @@ class _ProductRow extends StatelessWidget {
                 side: BorderSide.none,
                 visualDensity: VisualDensity.compact,
                 backgroundColor: scheme.primaryContainer,
+                labelStyle: Theme.of(context).textTheme.labelSmall,
+              ),
+            if (producto.esCompuesto)
+              Chip(
+                label: const Text('Compuesto'),
+                side: BorderSide.none,
+                visualDensity: VisualDensity.compact,
+                backgroundColor: scheme.tertiaryContainer,
                 labelStyle: Theme.of(context).textTheme.labelSmall,
               ),
           ],
@@ -563,15 +559,15 @@ class _ProductDialogState extends State<_ProductDialog> {
   Future<void> _crearCategoria() async {
     final input = await showDialog<_NuevaCategoriaInput>(
       context: context,
-      builder: (context) => _NuevaCategoriaDialog(categorias: _categorias),
+      builder: (context) => const _NuevaCategoriaDialog(),
     );
     if (input == null || input.nombre.trim().isEmpty) return;
     try {
+      final nombre = input.nombre.trim().toUpperCase();
       await widget.repository.saveCategoria(
         CategoriaProducto(
-          nombre: input.nombre.trim(),
+          nombre: nombre,
           color: _paleta[_categorias.length % _paleta.length],
-          parentId: input.parentId,
           siempreDisponible: false,
           orden: _categorias.length,
           activo: true,
@@ -579,9 +575,7 @@ class _ProductDialogState extends State<_ProductDialog> {
       );
       final categorias = await widget.repository.getCategorias();
       final creada = categorias.firstWhere(
-        (categoria) =>
-            categoria.nombre == input.nombre.trim() &&
-            categoria.parentId == input.parentId,
+        (categoria) => categoria.nombre.toUpperCase() == nombre,
       );
       if (!mounted) return;
       setState(() {
@@ -636,6 +630,7 @@ class _ProductDialogState extends State<_ProductDialog> {
           descripcion: _descripcion.text,
           precio: parseAmount(_precio.text),
           tipo: _tipo,
+          esCompuesto: widget.producto?.esCompuesto ?? false,
           imagen: _imagen,
           stockMinimo: _tipo == 'DIRECTO' ? parseAmount(_stockMinimo.text) : 0,
           costoUnitario: _tipo == 'DIRECTO' ? parseAmount(_costo.text) : 0,
@@ -770,9 +765,7 @@ class _ProductDialogState extends State<_ProductDialog> {
                               (categoria) => DropdownMenuItem(
                                 value: categoria.id,
                                 child: Text(
-                                  categoria.esSubcategoria
-                                      ? '   ${categoria.nombreCompleto}'
-                                      : categoria.nombre,
+                                  categoria.nombre,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -921,16 +914,13 @@ class _ProductDialogState extends State<_ProductDialog> {
 }
 
 class _NuevaCategoriaInput {
-  const _NuevaCategoriaInput({required this.nombre, this.parentId});
+  const _NuevaCategoriaInput({required this.nombre});
 
   final String nombre;
-  final int? parentId;
 }
 
 class _NuevaCategoriaDialog extends StatefulWidget {
-  const _NuevaCategoriaDialog({required this.categorias});
-
-  final List<CategoriaProducto> categorias;
+  const _NuevaCategoriaDialog();
 
   @override
   State<_NuevaCategoriaDialog> createState() => _NuevaCategoriaDialogState();
@@ -939,7 +929,6 @@ class _NuevaCategoriaDialog extends StatefulWidget {
 class _NuevaCategoriaDialogState extends State<_NuevaCategoriaDialog> {
   final _controller = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  int? _parentId;
 
   @override
   void dispose() {
@@ -951,18 +940,12 @@ class _NuevaCategoriaDialogState extends State<_NuevaCategoriaDialog> {
     if (!_formKey.currentState!.validate()) return;
     Navigator.pop(
       context,
-      _NuevaCategoriaInput(
-        nombre: _controller.text.trim().toUpperCase(),
-        parentId: _parentId,
-      ),
+      _NuevaCategoriaInput(nombre: _controller.text.trim().toUpperCase()),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final principales = widget.categorias
-        .where((categoria) => categoria.parentId == null && categoria.activo)
-        .toList();
     return AlertDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
       title: const Text('Nueva categoría'),
@@ -979,7 +962,7 @@ class _NuevaCategoriaDialogState extends State<_NuevaCategoriaDialog> {
                 textCapitalization: TextCapitalization.characters,
                 decoration: appInput(
                   label: 'Nombre',
-                  hint: 'Ej. SOPA, SEGUNDO, BEBIDAS',
+                  hint: 'Ej. SOPAS, REFRESCOS, POSTRES',
                 ),
                 onChanged: (value) {
                   final upper = value.toUpperCase();
@@ -993,28 +976,6 @@ class _NuevaCategoriaDialogState extends State<_NuevaCategoriaDialog> {
                     ? 'Ingresa un nombre'
                     : null,
                 onFieldSubmitted: (_) => _guardar(),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<int?>(
-                initialValue: _parentId,
-                isExpanded: true,
-                decoration: appInput(label: 'Categoría padre (opcional)'),
-                items: [
-                  const DropdownMenuItem<int?>(
-                    value: null,
-                    child: Text('Sin categoría padre'),
-                  ),
-                  ...principales.map(
-                    (categoria) => DropdownMenuItem<int?>(
-                      value: categoria.id,
-                      child: Text(
-                        categoria.nombre,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                ],
-                onChanged: (value) => setState(() => _parentId = value),
               ),
             ],
           ),

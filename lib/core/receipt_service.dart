@@ -72,7 +72,7 @@ class ReceiptService {
           fila('Cajero', cajero),
           if (pedido.referencia != null) fila('Referencia', pedido.referencia!),
           pw.Divider(),
-          ...detalle.lineas.map(
+          ...detalle.lineas.where((linea) => !linea.esComponente).map(
             (linea) => pw.Padding(
               padding: const pw.EdgeInsets.only(bottom: 2),
               child: pw.Row(

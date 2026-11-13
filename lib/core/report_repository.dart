@@ -34,6 +34,7 @@ class ProductoReporte {
     required this.ventas,
     required this.costo,
     required this.color,
+    this.precioUnitario = 0,
   });
 
   final String nombre;
@@ -41,8 +42,29 @@ class ProductoReporte {
   final double ventas;
   final double costo;
   final int color;
+  final double precioUnitario;
 
   double get ganancia => ventas - costo;
+}
+
+class SalidaReporte {
+  const SalidaReporte({
+    required this.fecha,
+    required this.detalle,
+    required this.metodoPago,
+    required this.monto,
+    required this.usuario,
+    required this.turno,
+  });
+
+  final DateTime fecha;
+  final String detalle;
+  final String metodoPago;
+  final double monto;
+  final String usuario;
+  final int turno;
+
+  String get turnoLabel => turno == 0 ? '—' : 'Turno $turno';
 }
 
 class PedidoReporte {
@@ -205,6 +227,8 @@ class ReportRepository {
                COALESCE(NULLIF(dp.costo_unitario, 0), COALESCE(pr.costo_unitario, 0))
                * dp.cantidad
              ) AS costo,
+             CASE WHEN SUM(dp.cantidad) > 0
+                  THEN SUM(dp.subtotal) / SUM(dp.cantidad) ELSE 0 END AS precio_unitario,
              COALESCE(c.color, 4280391418) AS categoria_color
       FROM detalle_pedido dp
       INNER JOIN pedidos p ON p.id = dp.pedido_id
@@ -212,6 +236,7 @@ class ReportRepository {
       LEFT JOIN categorias_producto c ON c.id = pr.categoria_id
       WHERE p.estado_pago <> 'ANULADO'
         AND p.estado_entrega <> 'ANULADO'
+        AND dp.es_componente = 0
         AND p.fecha >= ? AND p.fecha < ?
       GROUP BY dp.nombre_producto, c.color
       ORDER BY ventas DESC
@@ -226,6 +251,7 @@ class ReportRepository {
             ventas: (row['ventas'] as num).toDouble(),
             costo: (row['costo'] as num).toDouble(),
             color: (row['categoria_color'] as num).toInt(),
+            precioUnitario: (row['precio_unitario'] as num?)?.toDouble() ?? 0,
           ),
         )
         .toList();
@@ -296,6 +322,41 @@ class ReportRepository {
           (row) => GastoReporte(
             nombre: row['nombre']! as String,
             total: (row['total'] as num).toDouble(),
+          ),
+        )
+        .toList();
+  }
+
+  Future<List<SalidaReporte>> getSalidasDetalladas(
+    DateTime desde,
+    DateTime hasta,
+  ) async {
+    final db = await AppDatabase.instance.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT g.fecha, g.monto, g.metodo_pago,
+             COALESCE(NULLIF(g.descripcion, ''), cg.nombre) AS detalle,
+             u.nombre AS usuario,
+             COALESCE(c.numero_turno, 0) AS numero_turno
+      FROM gastos g
+      INNER JOIN categorias_gasto cg ON cg.id = g.categoria_gasto_id
+      INNER JOIN usuarios u ON u.id = g.usuario_id
+      LEFT JOIN cajas c ON c.id = g.caja_id
+      WHERE g.estado = 'REGISTRADO' AND g.fecha >= ? AND g.fecha < ?
+      ORDER BY g.fecha DESC, g.id DESC
+    ''',
+      [sqlDateTime(desde), sqlDateTime(hasta)],
+    );
+    return rows
+        .map(
+          (row) => SalidaReporte(
+            fecha:
+                DateTime.tryParse(row['fecha']! as String) ?? DateTime.now(),
+            detalle: row['detalle']! as String,
+            metodoPago: row['metodo_pago']! as String,
+            monto: (row['monto'] as num).toDouble(),
+            usuario: (row['usuario'] as String?) ?? '',
+            turno: ((row['numero_turno'] as num?) ?? 0).toInt(),
           ),
         )
         .toList();

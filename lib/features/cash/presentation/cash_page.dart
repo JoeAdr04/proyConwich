@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../../core/backup/drive_backup_service.dart';
 import '../../../core/cash_repository.dart';
 import '../../../core/date_utils.dart';
 import '../../../core/session.dart';
@@ -150,11 +153,32 @@ class _CashPageState extends State<CashPage> {
         _reload();
       });
       showAppMessage(context, 'Caja cerrada correctamente.');
+      _respaldarDriveEnSegundoPlano();
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
       showAppMessage(context, 'No se pudo cerrar la caja: $error', error: true);
     }
+  }
+
+  void _respaldarDriveEnSegundoPlano() {
+    unawaited(
+      Future<void>(() async {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        try {
+          await DriveBackupService().respaldarSiCorresponde(
+            motivo: 'cierre_caja',
+          );
+        } catch (error) {
+          if (!mounted) return;
+          showAppMessage(
+            context,
+            'No se pudo guardar la copia en Drive: $error',
+            error: true,
+          );
+        }
+      }),
+    );
   }
 
   Future<void> _salida(_CashData data) async {

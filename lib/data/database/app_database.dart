@@ -16,7 +16,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   /// Versión de esquema actual. Subir junto con `onUpgrade`.
-  static const int schemaVersion = 12;
+  static const int schemaVersion = 13;
 
   static const String nombreArchivo = 'sazon_restaurante_v2.db';
 
@@ -64,6 +64,16 @@ class AppDatabase {
     }, where: 'id = 1');
   }
 
+  /// Actualiza columnas de la fila única de metadatos.
+  Future<void> actualizarAppMeta(Map<String, Object?> values) async {
+    if (values.isEmpty) return;
+    await (await database).update(
+      'app_meta',
+      values,
+      where: 'id = 1',
+    );
+  }
+
   Future<Database> _openDatabase() async {
     configureDatabaseFactory();
     final path = await rutaArchivo;
@@ -91,6 +101,7 @@ class AppDatabase {
         await _migrarVentaDirecta(db);
         await _migrarEstadosMenu(db);
         await _migrarCategoriasAlmuerzo(db);
+        await _migrarV13(db);
         await _afterOpen(db);
       },
     );
@@ -104,46 +115,35 @@ class AppDatabase {
     await _seedAppMeta(db);
   }
 
-  /// Categorías base para que el menú y los productos nuevos tengan una
-  /// opción por defecto coherente. ALMUERZO COMPLETO es la categoría principal
-  /// y Sopa / Segundo son sus subcategorías (el almuerzo del día es una sopa
-  /// y su segundo).
+  /// Categorías base del catálogo. Son planas: los almuerzos completos ya no
+  /// son una categoría sino productos compuestos que se arman desde el menú.
   Future<void> _seedCategorias(Database db) async {
-    await db.insert('categorias_producto', {
-      'nombre': 'ALMUERZO COMPLETO',
-      'color': 0xFF0F766E,
-      'siempre_disponible': 0,
-      'orden': 1,
-      'activo': 1,
-    }, conflictAlgorithm: ConflictAlgorithm.ignore);
-    final padres = await db.query(
-      'categorias_producto',
-      columns: ['id'],
-      where: 'nombre = ? COLLATE NOCASE',
-      whereArgs: ['ALMUERZO COMPLETO'],
-      limit: 1,
-    );
-    if (padres.isEmpty) return;
-    final padreId = padres.first['id']! as int;
-
-    const hijas = [
-      {'nombre': 'SOPA', 'color': 0xFF2563EB, 'orden': 2},
-      {'nombre': 'SEGUNDO', 'color': 0xFFEA580C, 'orden': 3},
+    const categorias = [
+      {'nombre': 'PLATOS SUELTOS', 'color': 0xFFEA580C, 'orden': 1},
+      {'nombre': 'SOPAS', 'color': 0xFF2563EB, 'orden': 2},
+      {'nombre': 'BEBIDAS CALIENTES', 'color': 0xFF78350F, 'orden': 3},
+      {'nombre': 'REFRESCOS', 'color': 0xFF16A34A, 'orden': 4},
+      {'nombre': 'FRAPPES', 'color': 0xFF9333EA, 'orden': 5},
     ];
-    for (final hija in hijas) {
+    for (final categoria in categorias) {
       await db.insert('categorias_producto', {
-        'nombre': hija['nombre'],
-        'color': hija['color'],
-        'parent_id': padreId,
+        'nombre': categoria['nombre'],
+        'color': categoria['color'],
+        'parent_id': null,
         'siempre_disponible': 0,
-        'orden': hija['orden'],
+        'orden': categoria['orden'],
         'activo': 1,
       }, conflictAlgorithm: ConflictAlgorithm.ignore);
       await db.update(
         'categorias_producto',
-        {'parent_id': padreId, 'activo': 1},
+        {
+          'parent_id': null,
+          'siempre_disponible': 0,
+          'orden': categoria['orden'],
+          'activo': 1,
+        },
         where: 'nombre = ? COLLATE NOCASE',
-        whereArgs: [hija['nombre']],
+        whereArgs: [categoria['nombre']],
       );
     }
   }
@@ -181,7 +181,15 @@ class AppDatabase {
         nombre_negocio TEXT NOT NULL DEFAULT 'Conwich',
         ultimo_respaldo_en TEXT,
         ultimo_respaldo_app TEXT,
-        ultimo_respaldo_motivo TEXT
+        ultimo_respaldo_motivo TEXT,
+        drive_habilitado INTEGER NOT NULL DEFAULT 0,
+        drive_carpeta_uri TEXT,
+        drive_carpeta_nombre TEXT,
+        drive_retencion INTEGER NOT NULL DEFAULT 30,
+        drive_al_cerrar_caja INTEGER NOT NULL DEFAULT 1,
+        drive_frecuencia TEXT NOT NULL DEFAULT 'CADA_CIERRE',
+        drive_ultimo_exito TEXT,
+        drive_ultimo_error TEXT
       )
     ''');
 
@@ -237,6 +245,7 @@ class AppDatabase {
         precio REAL NOT NULL DEFAULT 0,
         imagen BLOB,
         tipo TEXT NOT NULL CHECK (tipo IN ('DIRECTO','PREPARADO')),
+        es_compuesto INTEGER NOT NULL DEFAULT 0,
         stock_minimo REAL NOT NULL DEFAULT 0,
         costo_unitario REAL NOT NULL DEFAULT 0,
         activo INTEGER NOT NULL DEFAULT 1,
@@ -305,6 +314,38 @@ class AppDatabase {
       )
     ''');
 
+    // Componentes de un producto compuesto (almuerzo completo o combo).
+    batch.execute('''
+      CREATE TABLE IF NOT EXISTS producto_componentes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        producto_id INTEGER NOT NULL,
+        componente_id INTEGER NOT NULL,
+        cantidad REAL NOT NULL DEFAULT 1,
+        orden INTEGER NOT NULL DEFAULT 0,
+        UNIQUE (producto_id, componente_id),
+        FOREIGN KEY (producto_id) REFERENCES productos(id),
+        FOREIGN KEY (componente_id) REFERENCES productos(id)
+      )
+    ''');
+
+    // Combos publicados en un menú del día. El producto compuesto conserva
+    // precio, imagen e historial de ventas.
+    batch.execute('''
+      CREATE TABLE IF NOT EXISTS menu_dia_combos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        menu_dia_id INTEGER NOT NULL,
+        producto_id INTEGER NOT NULL,
+        nombre TEXT NOT NULL,
+        precio REAL NOT NULL DEFAULT 0,
+        descuento_porcentaje REAL NOT NULL DEFAULT 0,
+        disponible INTEGER NOT NULL DEFAULT 1,
+        orden INTEGER NOT NULL DEFAULT 0,
+        UNIQUE (menu_dia_id, producto_id),
+        FOREIGN KEY (menu_dia_id) REFERENCES menus_dia(id),
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+      )
+    ''');
+
     batch.execute('''
       CREATE TABLE IF NOT EXISTS cajas (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -354,6 +395,7 @@ class AppDatabase {
         precio_unitario REAL NOT NULL,
         subtotal REAL NOT NULL,
         costo_unitario REAL NOT NULL DEFAULT 0,
+        es_componente INTEGER NOT NULL DEFAULT 0,
         observacion TEXT,
         FOREIGN KEY (pedido_id) REFERENCES pedidos(id),
         FOREIGN KEY (producto_id) REFERENCES productos(id),
@@ -569,6 +611,15 @@ class AppDatabase {
     );
     batch.execute(
       'CREATE INDEX IF NOT EXISTS idx_ajustes_producto ON ajustes_stock(producto_id)',
+    );
+    batch.execute(
+      'CREATE INDEX IF NOT EXISTS idx_componentes_producto ON producto_componentes(producto_id)',
+    );
+    batch.execute(
+      'CREATE INDEX IF NOT EXISTS idx_menu_combos ON menu_dia_combos(menu_dia_id)',
+    );
+    batch.execute(
+      'CREATE INDEX IF NOT EXISTS idx_detalle_componente ON detalle_pedido(pedido_id, es_componente)',
     );
 
     batch.execute('''
@@ -916,6 +967,128 @@ class AppDatabase {
       }
     } catch (error) {
       debugPrint('No se pudieron migrar las categorías del almuerzo: $error');
+    }
+  }
+
+  /// Categorías planas, columnas de compuestos y configuración de respaldo
+  /// en Drive. También traslada productos de categorías antiguas.
+  Future<void> _migrarV13(Database db) async {
+    try {
+      if (!await _tieneColumna(db, 'productos', 'es_compuesto')) {
+        await db.execute(
+          'ALTER TABLE productos ADD COLUMN es_compuesto INTEGER NOT NULL DEFAULT 0',
+        );
+      }
+      if (!await _tieneColumna(db, 'detalle_pedido', 'es_componente')) {
+        await db.execute(
+          'ALTER TABLE detalle_pedido ADD COLUMN es_componente INTEGER NOT NULL DEFAULT 0',
+        );
+      }
+      const columnasMeta = <String, String>{
+        'drive_habilitado': 'INTEGER NOT NULL DEFAULT 0',
+        'drive_carpeta_uri': 'TEXT',
+        'drive_carpeta_nombre': 'TEXT',
+        'drive_retencion': 'INTEGER NOT NULL DEFAULT 30',
+        'drive_al_cerrar_caja': 'INTEGER NOT NULL DEFAULT 1',
+        'drive_frecuencia': "TEXT NOT NULL DEFAULT 'CADA_CIERRE'",
+        'drive_ultimo_exito': 'TEXT',
+        'drive_ultimo_error': 'TEXT',
+      };
+      for (final columna in columnasMeta.entries) {
+        if (!await _tieneColumna(db, 'app_meta', columna.key)) {
+          await db.execute(
+            'ALTER TABLE app_meta ADD COLUMN ${columna.key} ${columna.value}',
+          );
+        }
+      }
+
+      await _seedCategorias(db);
+
+      Future<int?> categoriaId(String nombre) async {
+        final rows = await db.query(
+          'categorias_producto',
+          columns: ['id'],
+          where: 'nombre = ? COLLATE NOCASE',
+          whereArgs: [nombre],
+          limit: 1,
+        );
+        return rows.isEmpty ? null : rows.first['id']! as int;
+      }
+
+      Future<void> moverProductos(String origen, String destino) async {
+        final origenId = await categoriaId(origen);
+        final destinoId = await categoriaId(destino);
+        if (origenId == null || destinoId == null || origenId == destinoId) {
+          return;
+        }
+        await db.update(
+          'productos',
+          {'categoria_id': destinoId},
+          where: 'categoria_id = ?',
+          whereArgs: [origenId],
+        );
+      }
+
+      await moverProductos('SOPA', 'SOPAS');
+      await moverProductos('SEGUNDO', 'PLATOS SUELTOS');
+      await moverProductos('PLATO SUELTO', 'PLATOS SUELTOS');
+      await moverProductos('ALMUERZO COMPLETO', 'PLATOS SUELTOS');
+      await moverProductos('COMPLETO', 'PLATOS SUELTOS');
+      await moverProductos('ALMUERZO', 'PLATOS SUELTOS');
+      await moverProductos('GASEOSAS', 'REFRESCOS');
+      await moverProductos('JUGOS', 'REFRESCOS');
+      await moverProductos('FRAPES', 'FRAPPES');
+      await moverProductos('BEBIDAS', 'BEBIDAS CALIENTES');
+
+      // A partir de esta versión las categorías son planas. Cualquier
+      // jerarquía anterior se descarta sin perder los productos.
+      await db.update('categorias_producto', {'parent_id': null});
+      await db.rawUpdate(
+        "UPDATE app_meta SET drive_frecuencia = 'CADA_CIERRE' "
+        "WHERE drive_frecuencia IS NULL OR drive_frecuencia = 'DIARIO'",
+      );
+
+      // Las categorías legacy se eliminan si quedaron vacías; si aún tienen
+      // productos se conservan inactivas para no romper claves foráneas.
+      for (final nombre in const [
+        'SOPA',
+        'SEGUNDO',
+        'PLATO SUELTO',
+        'ALMUERZO COMPLETO',
+        'COMPLETO',
+        'ALMUERZO',
+        'GASEOSAS',
+        'JUGOS',
+        'FRAPES',
+        'BEBIDAS',
+      ]) {
+        final id = await categoriaId(nombre);
+        if (id == null) continue;
+        final total =
+            Sqflite.firstIntValue(
+              await db.rawQuery(
+                'SELECT COUNT(*) FROM productos WHERE categoria_id = ?',
+                [id],
+              ),
+            ) ??
+            0;
+        if (total == 0) {
+          await db.delete(
+            'categorias_producto',
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+        } else {
+          await db.update(
+            'categorias_producto',
+            {'activo': 0, 'parent_id': null},
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+        }
+      }
+    } catch (error) {
+      debugPrint('No se pudo migrar el esquema v13: $error');
     }
   }
 

@@ -28,7 +28,7 @@ Flutter app (POS de restaurante "Conwich"). Paquete Dart: `test_code_02` — los
 
 ## Base de datos (SQLite / sqflite)
 - `lib/data/database/app_database.dart` — singleton `AppDatabase.instance`, schema versionado a mano.
-- `version: 12` (`AppDatabase.schemaVersion`); DB file `sazon_restaurante_v2.db`. Las claves
+- `version: 13` (`AppDatabase.schemaVersion`); DB file `sazon_restaurante_v2.db`. Las claves
   foráneas se desactivan durante la migración y se activan en `onOpen` (`PRAGMA foreign_keys = ON`).
 - Para cambiar schema: subir `version`, añadir `onUpgrade`. Las vistas `v_stock_insumos` y
   `v_stock_productos` se dropean y recrean en cada upgrade (ya se hace en `_createSchema`).
@@ -38,22 +38,36 @@ Flutter app (POS de restaurante "Conwich"). Paquete Dart: `test_code_02` — los
 - `insumos.venta_directa` genera/actualiza un producto vinculado (`producto_id`) con receta de
   1 unidad; su categoría queda `siempre_disponible = 1`. Los productos `DIRECTO` viejos se
   migran automáticamente a insumo + receta al subir a v7 y el stock actual se conserva.
-- `_afterOpen` siembra la categoría base `ALMUERZO` y sus subcategorías `PLATO SUELTO` y
-  `COMPLETO` (el formulario de producto usa una de ellas por defecto). Las categorías se guardan
-  siempre en mayúsculas. `Desayuno` ya no existe. Los insumos de venta directa guardan su foto
-  en el producto.
+- `_afterOpen` siembra categorías planas: `PLATOS SUELTOS`, `SOPAS`, `BEBIDAS CALIENTES`,
+  `REFRESCOS` y `FRAPPES`. No hay categorías padre ni subcategorías (`parent_id` queda en NULL).
+  Las categorías se guardan siempre en mayúsculas y se pueden crear nuevas desde Productos.
+  Los insumos de venta directa guardan su foto en el producto.
 - `cajas` usa `numero_turno` consecutivo por día (`Turno 1, 2, 3…`), no `MAÑANA/TARDE`.
   Cerrar una caja ya no cierra el menú del día.
-- Menú del día replica el catálogo de Ventas agrupado por categoría/subcategoría, con chips de
+- Menú del día replica el catálogo de Ventas agrupado por categoría plana, con chips de
   categorías (por color) para filtrar. Tocar un plato lo agrega o quita del menú al instante; los
   platos del menú llevan borde verde con check y los agotados salen en rojo y bloqueados (se
-  reactivan con el control de la tarjeta). "Crear menú" arranca con los platos del día anterior y
-  "Limpiar" vacía el menú. La venta directa va en una sección SIEMPRE DISPONIBLES. Si no hay caja
-  abierta, Ventas muestra un botón "Ir a Caja".
+  reactivan con el control de la tarjeta). Al abrir un día sin menú se copia automáticamente la
+  configuración del menú anterior (platos y combos); si hay un menú programado para esa fecha se
+  respeta. "Programar días" copia la configuración a los siguientes días. El menú solo se publica
+  (`HABILITADO`); no se cierra. "Limpiar" vacía platos y combos. La venta directa va en una
+  sección SIEMPRE DISPONIBLES. Si no hay caja abierta, Ventas muestra un botón "Ir a Caja".
+- Los almuerzos/combos se arman en la sección "Almuerzos y combos": se seleccionan uno o más
+  productos (sin cantidades), se define nombre y precio. Desde 2 productos se sugiere
+  automáticamente `suma × 0.90`, pero el usuario puede editar solo el precio. El combo se guarda
+  como producto compuesto (`productos.es_compuesto = 1`), sus componentes en
+  `producto_componentes` y su publicación diaria en `menu_dia_combos`. Los productos componentes
+  siguen vendiéndose por separado y ningún producto necesita receta.
 - El estado del menú se llama `HABILITADO` (antes `PUBLICADO`) en BD, código y textos; la columna
   es `habilitado_en`. El tablero ofrece "Empezar el día" (lleva al menú y de ahí un atajo a Caja).
-- `app_meta` (fila única): `instalacion_id` (UUID estable de la instalación) y fecha del último
-  respaldo. Se escribe **antes** de copiar el archivo, así la fecha viaja dentro del respaldo.
+- `app_meta` (fila única): `instalacion_id` (UUID estable de la instalación), fecha del último
+  respaldo y configuración de respaldo en Drive (`drive_habilitado`, `drive_carpeta_uri`,
+  `drive_carpeta_nombre`, `drive_retencion`, `drive_al_cerrar_caja`, `drive_frecuencia`,
+  `drive_ultimo_exito`, `drive_ultimo_error`). Se escribe **antes** de copiar el archivo, así la
+  fecha viaja dentro del respaldo.
+- `detalle_pedido.es_componente` marca las líneas hijas de un combo. No suman ventas; sirven para
+  descontar stock de productos directos y conservar trazabilidad. La receta de cada componente se
+  consume solo si existe.
 - Import condicional de factory: `database_factory_web.dart if (dart.library.io) database_factory_io.dart`
   (sqflite vs sqflite_common_ffi_web). No romper este patrón.
 
@@ -68,6 +82,15 @@ Flutter app (POS de restaurante "Conwich"). Paquete Dart: `test_code_02` — los
   depende de `schemaVersion`, no del nombre del archivo. El `.db` de trabajo sigue siendo
   `sazon_restaurante_v2.db`.
 - `excel_exporter.dart` genera una hoja por tabla; excluye `password_hash` y el BLOB `imagen`.
+- `report_exporter.dart` genera el reporte del período en PDF tamaño carta (resumen, gráfico de
+  más vendidos, productos con precio unitario, salidas detalladas y pedidos) y en Excel (hojas
+  Resumen, Productos, Salidas, Pedidos, Gráfico y Faltantes). El gráfico de Excel usa barras de
+  celdas coloreadas porque el paquete `excel` no soporta gráficos nativos.
+- Respaldo en Google Drive: se usa el selector de carpetas de Android (SAF), no Google Cloud ni
+  OAuth. `android/.../MainActivity.kt` expone un `MethodChannel` con elegir carpeta, verificar
+  permiso, escribir, listar y borrar. La carpeta elegida se guarda en `app_meta`. Las copias se
+  suben al cerrar caja (según configuración) y en el inicio si la frecuencia está vencida; se
+  conservan las últimas N copias (`drive_retencion`, por defecto 30).
 
 ## Convenciones / gotchas
 - **Regla: el sistema nunca depende de que los productos tengan receta.** Un `PREPARADO` sin

@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/app_info.dart';
+import '../../../core/backup/drive_backup_service.dart';
 import '../../../core/auth_repository.dart';
 import '../../../core/session.dart';
 import '../../../ui/common.dart';
@@ -48,6 +51,21 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
   int _refreshToken = 0;
   bool _flujoInicio = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(
+      Future<void>(() async {
+        await Future<void>.delayed(const Duration(seconds: 3));
+        try {
+          await DriveBackupService().respaldarSiCorresponde(motivo: 'inicio');
+        } catch (_) {
+          // El error queda registrado en app_meta por el propio servicio.
+        }
+      }),
+    );
+  }
 
   @override
   void didUpdateWidget(AppShell oldWidget) {

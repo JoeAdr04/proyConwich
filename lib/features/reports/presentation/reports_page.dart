@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/date_utils.dart';
 import '../../../core/receipt_service.dart';
+import '../../../core/report_exporter.dart';
 import '../../../core/report_repository.dart';
 import '../../../core/sales_repository.dart';
 import '../../../ui/common.dart';
@@ -13,6 +14,7 @@ class _ReportData {
     required this.resumen,
     required this.productos,
     required this.salidas,
+    required this.salidasDetalle,
     required this.inventario,
     required this.pedidos,
     required this.faltantes,
@@ -21,6 +23,7 @@ class _ReportData {
   final ResumenFinanciero resumen;
   final List<ProductoReporte> productos;
   final List<GastoReporte> salidas;
+  final List<SalidaReporte> salidasDetalle;
   final List<InventarioReporte> inventario;
   final List<PedidoReporte> pedidos;
   final List<FaltanteInsumoReporte> faltantes;
@@ -41,6 +44,7 @@ class _ReportsPageState extends State<ReportsPage> {
   late Future<_ReportData> _future;
   String _periodo = 'DIA';
   DateTime _anchor = DateTime.now();
+  bool _exportando = false;
 
   @override
   void initState() {
@@ -136,6 +140,10 @@ class _ReportsPageState extends State<ReportsPage> {
       range.start,
       range.end,
     );
+    final salidasDetalle = await _repository.getSalidasDetalladas(
+      range.start,
+      range.end,
+    );
     final inventario = await _repository.getInventario();
     final pedidos = await _repository.getPedidos(range.start, range.end);
     final faltantes = await _repository.getFaltantes(range.start, range.end);
@@ -143,10 +151,64 @@ class _ReportsPageState extends State<ReportsPage> {
       resumen: resumen,
       productos: productos,
       salidas: salidas,
+      salidasDetalle: salidasDetalle,
       inventario: inventario,
       pedidos: pedidos,
       faltantes: faltantes,
     );
+  }
+
+  ReportExportData _exportData(_ReportData data, DateTimeRange range) =>
+      ReportExportData(
+        desde: range.start,
+        hasta: range.end,
+        resumen: data.resumen,
+        productos: data.productos,
+        salidas: data.salidasDetalle,
+        pedidos: data.pedidos,
+        faltantes: data.faltantes,
+      );
+
+  Future<void> _exportar({required bool pdf, required bool compartir}) async {
+    if (_exportando) return;
+    setState(() => _exportando = true);
+    final exporter = ReportExporter();
+    try {
+      final data = await _future;
+      final exportData = _exportData(data, _range);
+      final nombre = exporter.nombreArchivo(
+        exportData,
+        extension: pdf ? 'pdf' : 'xlsx',
+      );
+      if (pdf) {
+        final bytes = await exporter.generarPdf(exportData);
+        if (!mounted) return;
+        if (compartir) {
+          await exporter.compartirPdf(bytes, nombre: nombre);
+        } else {
+          final guardado = await exporter.guardarPdf(bytes, nombre: nombre);
+          if (guardado && mounted) {
+            showAppMessage(context, 'PDF guardado como $nombre.');
+          }
+        }
+      } else {
+        final bytes = await exporter.generarExcel(exportData);
+        if (!mounted) return;
+        if (compartir) {
+          await exporter.compartirExcel(bytes, nombre: nombre);
+        } else {
+          final guardado = await exporter.guardarExcel(bytes, nombre: nombre);
+          if (guardado && mounted) {
+            showAppMessage(context, 'Excel guardado como $nombre.');
+          }
+        }
+      }
+    } catch (error) {
+      if (!mounted) return;
+      showAppMessage(context, 'No se pudo generar el reporte: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _exportando = false);
+    }
   }
 
   @override
@@ -172,6 +234,44 @@ class _ReportsPageState extends State<ReportsPage> {
                     title: 'Reportes',
                     subtitle: 'Ganancia = ventas − gasto en insumos − salidas de emergencia.',
                     actions: [
+                      PopupMenuButton<String>(
+                        tooltip: 'Reporte PDF',
+                        enabled: !_exportando,
+                        icon: const Icon(Icons.picture_as_pdf_outlined),
+                        onSelected: (value) => _exportar(
+                          pdf: true,
+                          compartir: value == 'compartir',
+                        ),
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: 'compartir',
+                            child: Text('Compartir PDF'),
+                          ),
+                          PopupMenuItem(
+                            value: 'guardar',
+                            child: Text('Guardar PDF'),
+                          ),
+                        ],
+                      ),
+                      PopupMenuButton<String>(
+                        tooltip: 'Reporte Excel',
+                        enabled: !_exportando,
+                        icon: const Icon(Icons.table_view_outlined),
+                        onSelected: (value) => _exportar(
+                          pdf: false,
+                          compartir: value == 'compartir',
+                        ),
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: 'compartir',
+                            child: Text('Compartir Excel'),
+                          ),
+                          PopupMenuItem(
+                            value: 'guardar',
+                            child: Text('Guardar Excel'),
+                          ),
+                        ],
+                      ),
                       OutlinedButton.icon(
                         onPressed: () => setState(_reload),
                         icon: const Icon(Icons.refresh),
@@ -336,17 +436,41 @@ class _ReportsPageState extends State<ReportsPage> {
                     ?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 10),
-              if (data.salidas.isEmpty)
+              if (data.salidasDetalle.isEmpty)
                 const Text('No hay salidas registradas en el período.')
               else
-                ...data.salidas.map(
+                ...data.salidasDetalle.map(
                   (salida) => Padding(
                     padding: const EdgeInsets.only(bottom: 6),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(child: Text(salida.nombre)),
+                        SizedBox(
+                          width: 118,
+                          child: Text(
+                            formatDateTimeShort(salida.fecha),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(salida.detalle),
+                              Text(
+                                '${salida.metodoPago} · ${salida.usuario} · ${salida.turnoLabel}',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         Text(
-                          formatMoney(salida.total),
+                          formatMoney(salida.monto),
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ],
@@ -584,6 +708,7 @@ class _ReportsPageState extends State<ReportsPage> {
               columns: const [
                 DataColumn(label: Text('Producto')),
                 DataColumn(label: Text('Cantidad'), numeric: true),
+                DataColumn(label: Text('Precio unit.'), numeric: true),
                 DataColumn(label: Text('Ventas'), numeric: true),
                 DataColumn(label: Text('Costo'), numeric: true),
                 DataColumn(label: Text('Ganancia'), numeric: true),
@@ -594,6 +719,7 @@ class _ReportsPageState extends State<ReportsPage> {
                       cells: [
                         DataCell(Text(producto.nombre)),
                         DataCell(Text(formatQty(producto.cantidad))),
+                        DataCell(Text(formatMoney(producto.precioUnitario))),
                         DataCell(Text(formatMoney(producto.ventas))),
                         DataCell(Text(formatMoney(producto.costo))),
                         DataCell(

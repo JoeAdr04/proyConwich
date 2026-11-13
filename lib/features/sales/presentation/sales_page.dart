@@ -16,6 +16,7 @@ class _SaleProduct {
   const _SaleProduct({
     required this.productoId,
     this.menuDiaItemId,
+    this.menuDiaComboId,
     required this.nombre,
     required this.precio,
     required this.categoriaNombre,
@@ -32,6 +33,7 @@ class _SaleProduct {
 
   final int productoId;
   final int? menuDiaItemId;
+  final int? menuDiaComboId;
   final String nombre;
   final double precio;
   final String categoriaNombre;
@@ -102,8 +104,7 @@ class _SalesPageState extends State<SalesPage> {
   final _referencia = TextEditingController();
   final _observacion = TextEditingController();
   String _search = '';
-  String? _categoriaPadre;
-  String? _subcategoria;
+  String? _categoria;
   int? _pedidoEditandoId;
   bool _saving = false;
 
@@ -139,8 +140,28 @@ class _SalesPageState extends State<SalesPage> {
     final menuItems = menu != null && menu.habilitado
         ? await _menuRepository.getItems(menu.id)
         : <MenuItem>[];
+    final combos = menu != null && menu.habilitado
+        ? await _menuRepository.getCombos(menu.id)
+        : <MenuCombo>[];
 
     final productos = <int, _SaleProduct>{};
+    for (final combo in combos) {
+      final producto = await _catalogRepository.getProducto(combo.productoId);
+      productos[combo.productoId] = _SaleProduct(
+        productoId: combo.productoId,
+        menuDiaComboId: combo.id,
+        nombre: combo.nombre,
+        precio: combo.precio,
+        categoriaNombre: 'ALMUERZOS Y COMBOS',
+        categoriaColor: combo.categoriaColor,
+        tipo: 'PREPARADO',
+        disponible: combo.disponible,
+        motivo: combo.disponible ? null : 'Combo agotado',
+        stock: producto?.stock ?? 0,
+        enMenu: true,
+        imagen: combo.imagen,
+      );
+    }
     for (final item in menuItems) {
       final producto = await _catalogRepository.getProducto(item.productoId);
       final advertencia = await _catalogRepository.advertenciaInsumos(
@@ -231,6 +252,7 @@ class _SalesPageState extends State<SalesPage> {
         _cart[producto.productoId] = CartLine(
           productoId: producto.productoId,
           menuDiaItemId: producto.menuDiaItemId,
+          menuDiaComboId: producto.menuDiaComboId,
           nombre: producto.nombre,
           precio: producto.precio,
           cantidad: 1,
@@ -494,7 +516,8 @@ class _SalesPageState extends State<SalesPage> {
 
   Future<void> _agotar(_SaleProduct producto) async {
     final menuItemId = producto.menuDiaItemId;
-    if (menuItemId == null) return;
+    final comboId = producto.menuDiaComboId;
+    if (menuItemId == null && comboId == null) return;
     final confirmado = await confirmAction(
       context,
       title: 'Reportar agotamiento',
@@ -504,7 +527,11 @@ class _SalesPageState extends State<SalesPage> {
       destructive: true,
     );
     if (!confirmado) return;
-    await _menuRepository.setDisponible(menuItemId, false, motivo: 'Agotado');
+    if (comboId != null) {
+      await _menuRepository.setComboDisponible(comboId, false);
+    } else {
+      await _menuRepository.setDisponible(menuItemId!, false, motivo: 'Agotado');
+    }
     if (!mounted) return;
     setState(_reload);
     showAppMessage(context, '${producto.nombre} marcado como agotado.');
@@ -630,23 +657,11 @@ class _SalesPageState extends State<SalesPage> {
   }
 
   Widget _filtros(BuildContext context, _SalesData data) {
-    String padre(_SaleProduct producto) =>
-        producto.categoriaPadreNombre ?? producto.categoriaNombre;
-    final padres = data.productos.map(padre).toSet().toList()..sort();
-    final subcategorias =
-        _categoriaPadre == null
-              ? <String>[]
-              : (data.productos
-                    .where(
-                      (producto) =>
-                          padre(producto) == _categoriaPadre &&
-                          producto.categoriaNombre !=
-                              producto.categoriaPadreNombre,
-                    )
-                    .map((producto) => producto.categoriaNombre)
-                    .toSet()
-                    .toList())
-          ..sort();
+    final categorias = data.productos
+        .map((producto) => producto.categoriaNombre)
+        .toSet()
+        .toList()
+      ..sort();
     return AppCard(
       padding: const EdgeInsets.all(12),
       child: Wrap(
@@ -665,51 +680,25 @@ class _SalesPageState extends State<SalesPage> {
             ),
           ),
           ChoiceChip(
-            label: const Text('Todos'),
-            selected: _categoriaPadre == null,
-            onSelected: (_) => setState(() {
-              _categoriaPadre = null;
-              _subcategoria = null;
-            }),
+            label: const Text('Todas'),
+            selected: _categoria == null,
+            onSelected: (_) => setState(() => _categoria = null),
           ),
-          ...padres.map(
+          ...categorias.map(
             (categoria) => ChoiceChip(
               label: Text(categoria),
-              selected: _categoriaPadre == categoria,
-              onSelected: (_) => setState(() {
-                _categoriaPadre = categoria;
-                _subcategoria = null;
-              }),
+              selected: _categoria == categoria,
+              onSelected: (_) => setState(() => _categoria = categoria),
             ),
           ),
-          if (subcategorias.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            ChoiceChip(
-              label: const Text('Todas las subcategorías'),
-              selected: _subcategoria == null,
-              onSelected: (_) => setState(() => _subcategoria = null),
-            ),
-            ...subcategorias.map(
-              (categoria) => ChoiceChip(
-                label: Text(categoria),
-                selected: _subcategoria == categoria,
-                onSelected: (_) => setState(() => _subcategoria = categoria),
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
 
   Widget _catalogo(BuildContext context, _SalesData data) {
-    String padre(_SaleProduct producto) =>
-        producto.categoriaPadreNombre ?? producto.categoriaNombre;
     final filtrados = data.productos.where((producto) {
-      if (_categoriaPadre != null && padre(producto) != _categoriaPadre) {
-        return false;
-      }
-      if (_subcategoria != null && producto.categoriaNombre != _subcategoria) {
+      if (_categoria != null && producto.categoriaNombre != _categoria) {
         return false;
       }
       final term = _search.trim().toLowerCase();
@@ -754,7 +743,8 @@ class _SalesPageState extends State<SalesPage> {
                 onTap: producto.vendible ? () => _add(producto) : null,
                 advertencia: producto.vendible ? producto.advertencia : null,
                 accion:
-                    producto.menuDiaItemId != null &&
+                    (producto.menuDiaItemId != null ||
+                            producto.menuDiaComboId != null) &&
                         widget.usuario.puede(Permiso.agotamiento)
                     ? IconButton(
                         tooltip: 'Reportar agotado',
@@ -1333,7 +1323,7 @@ class _PedidoDetalleDialog extends StatelessWidget {
                     ?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 6),
-              ...detalle.lineas.map(
+              ...detalle.lineas.where((linea) => !linea.esComponente).map(
                 (linea) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Row(
