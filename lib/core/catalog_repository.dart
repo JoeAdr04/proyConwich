@@ -256,7 +256,8 @@ class CatalogRepository {
         .toList();
   }
 
-  Future<void> saveCategoria(CategoriaProducto categoria) async {
+  /// Guarda la categoría y devuelve su id (nuevo o existente).
+  Future<int> saveCategoria(CategoriaProducto categoria) async {
     final db = await AppDatabase.instance.database;
     final values = <String, Object?>{
       'nombre': categoria.nombre.trim().toUpperCase(),
@@ -267,15 +268,15 @@ class CatalogRepository {
       'activo': categoria.activo ? 1 : 0,
     };
     if (categoria.id == null) {
-      await db.insert('categorias_producto', values);
-    } else {
-      await db.update(
-        'categorias_producto',
-        values,
-        where: 'id = ?',
-        whereArgs: [categoria.id],
-      );
+      return db.insert('categorias_producto', values);
     }
+    await db.update(
+      'categorias_producto',
+      values,
+      where: 'id = ?',
+      whereArgs: [categoria.id],
+    );
+    return categoria.id!;
   }
 
   Future<void> setCategoriaActiva(int id, bool activo) async {
@@ -286,6 +287,61 @@ class CatalogRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  /// Categorías que el sistema usa por nombre (sopa, completo, presentaciones,
+  /// combos y venta directa). Renombrarlas o eliminarlas rompe esos flujos y la
+  /// app las vuelve a sembrar al abrir la base, así que solo se les permite
+  /// cambiar el color.
+  static const _categoriasProtegidas = {
+    'PLATOS SUELTOS',
+    'SOPAS',
+    'BEBIDAS CALIENTES',
+    'REFRESCOS',
+    'FRAPPES',
+    'COMBOS',
+    'VENTA DIRECTA',
+  };
+
+  static bool esCategoriaProtegida(String nombre) =>
+      _categoriasProtegidas.contains(nombre.trim().toUpperCase());
+
+  /// Cuántos productos (activos o no) usan la categoría.
+  Future<int> countProductosCategoria(int categoriaId) async {
+    final db = await AppDatabase.instance.database;
+    final rows = await db.rawQuery(
+      'SELECT COUNT(*) AS total FROM productos WHERE categoria_id = ?',
+      [categoriaId],
+    );
+    return (rows.first['total'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Pasa todos los productos de una categoría a otra (antes de eliminarla).
+  Future<void> moverProductosCategoria({
+    required int desdeId,
+    required int hastaId,
+  }) async {
+    if (desdeId == hastaId) return;
+    final db = await AppDatabase.instance.database;
+    await db.update(
+      'productos',
+      {'categoria_id': hastaId},
+      where: 'categoria_id = ?',
+      whereArgs: [desdeId],
+    );
+  }
+
+  /// Borra la categoría. Solo se permite si no quedan productos usando la
+  /// clave foránea; la interfaz ofrece moverlos antes.
+  Future<void> deleteCategoria(int id) async {
+    final db = await AppDatabase.instance.database;
+    final enUso = await countProductosCategoria(id);
+    if (enUso > 0) {
+      throw StateError(
+        'La categoría todavía tiene $enUso producto(s). Muévelos antes de eliminarla.',
+      );
+    }
+    await db.delete('categorias_producto', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<List<UnidadMedida>> getUnidades() async {

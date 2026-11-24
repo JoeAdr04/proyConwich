@@ -5,18 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/catalog_repository.dart';
 import '../../../core/date_utils.dart';
 import '../../../core/session.dart';
+import '../../../ui/categoria_editor.dart';
 import '../../../ui/common.dart';
-
-const _paleta = <int>[
-  0xFF70452D, // Nogal
-  0xFF3D2419, // Espresso
-  0xFFC18A55, // Caramelo
-  0xFFE8C995, // Dorado
-  0xFF574537, // Texto
-  0xFF2B1A12, // Texto oscuro
-  0xFF70452D, // Nogal
-  0xFFC18A55, // Caramelo
-];
 
 class _ProductsData {
   const _ProductsData({
@@ -252,27 +242,14 @@ class _ProductsPageState extends State<ProductsPage> {
                     ),
                     SizedBox(
                       width: 230,
-                      child: DropdownButtonFormField<int?>(
-                        initialValue: _categoriaId,
-                        isExpanded: true,
-                        decoration: appInput(label: 'Categoría'),
-                        items: [
-                          const DropdownMenuItem<int?>(
-                            value: null,
-                            child: Text('Todas'),
-                          ),
-                          ...categorias.map(
-                            (categoria) => DropdownMenuItem<int?>(
-                              value: categoria.id,
-                              child: Text(
-                                categoria.nombre,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ),
-                        ],
+                      child: CategoriaPickerField(
+                        repository: _repository,
+                        categorias: categorias,
+                        value: _categoriaId,
+                        incluirTodas: true,
                         onChanged: (value) =>
                             setState(() => _categoriaId = value),
+                        onCategoriasChanged: (_) => setState(_reload),
                       ),
                     ),
                     FilterChip(
@@ -994,35 +971,19 @@ class _ProductDialogState extends State<_ProductDialog> {
   }
 
   Future<void> _crearCategoria() async {
-    final input = await showDialog<_NuevaCategoriaInput>(
+    final id = await showCategoriaEditor(
       context: context,
-      builder: (context) => const _NuevaCategoriaDialog(),
+      repository: widget.repository,
+      categorias: _categorias,
     );
-    if (input == null || input.nombre.trim().isEmpty) return;
-    try {
-      final nombre = input.nombre.trim().toUpperCase();
-      await widget.repository.saveCategoria(
-        CategoriaProducto(
-          nombre: nombre,
-          color: _paleta[_categorias.length % _paleta.length],
-          siempreDisponible: false,
-          orden: _categorias.length,
-          activo: true,
-        ),
-      );
-      final categorias = await widget.repository.getCategorias();
-      final creada = categorias.firstWhere(
-        (categoria) => categoria.nombre.toUpperCase() == nombre,
-      );
-      if (!mounted) return;
-      setState(() {
-        _categorias = categorias;
-        _categoriaId = creada.id;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = 'No se pudo crear la categoría: $error');
-    }
+    if (id == null || !mounted) return;
+    final categorias = await widget.repository.getCategorias();
+    if (!mounted) return;
+    setState(() {
+      _categorias = categorias;
+      _categoriaId = id;
+      _error = null;
+    });
   }
 
   Future<void> _cargarImagen(ImageSource source) async {
@@ -1360,85 +1321,6 @@ class _ProductDialogState extends State<_ProductDialog> {
           onPressed: _saving ? null : _save,
           child: Text(_saving ? 'Guardando…' : 'Guardar'),
         ),
-      ],
-    );
-  }
-}
-
-class _NuevaCategoriaInput {
-  const _NuevaCategoriaInput({required this.nombre});
-
-  final String nombre;
-}
-
-class _NuevaCategoriaDialog extends StatefulWidget {
-  const _NuevaCategoriaDialog();
-
-  @override
-  State<_NuevaCategoriaDialog> createState() => _NuevaCategoriaDialogState();
-}
-
-class _NuevaCategoriaDialogState extends State<_NuevaCategoriaDialog> {
-  final _controller = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _guardar() {
-    if (!_formKey.currentState!.validate()) return;
-    Navigator.pop(
-      context,
-      _NuevaCategoriaInput(nombre: _controller.text.trim().toUpperCase()),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
-      title: const Text('Nueva categoría'),
-      content: DialogSurface(
-        maxWidth: 380,
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _controller,
-                autofocus: true,
-                textCapitalization: TextCapitalization.characters,
-                decoration: appInput(
-                  label: 'Nombre',
-                  hint: 'Ej. SOPAS, REFRESCOS, POSTRES',
-                ),
-                onChanged: (value) {
-                  final upper = value.toUpperCase();
-                  if (upper == value) return;
-                  _controller.value = TextEditingValue(
-                    text: upper,
-                    selection: TextSelection.collapsed(offset: upper.length),
-                  );
-                },
-                validator: (value) => (value == null || value.trim().isEmpty)
-                    ? 'Ingresa un nombre'
-                    : null,
-                onFieldSubmitted: (_) => _guardar(),
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(onPressed: _guardar, child: const Text('Crear')),
       ],
     );
   }
