@@ -227,10 +227,9 @@ class _CategoriaPickerFieldState extends State<CategoriaPickerField> {
         SizedBox(
           width: menuWidth,
           child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: screenSize.height * 0.65,
-            ),
+            constraints: BoxConstraints(maxHeight: screenSize.height * 0.65),
             child: SingleChildScrollView(
+              primary: false,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -502,6 +501,7 @@ class _CategoriaEditorDialogState extends State<_CategoriaEditorDialog> {
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
+            primary: false,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -1002,40 +1002,6 @@ class _ProductDialogState extends State<_ProductDialog> {
       repository: widget.repository,
       categorias: _categorias,
     );
-<<<<<<< HEAD
-    if (input == null || input.nombre.trim().isEmpty) return;
-    try {
-      final nombre = input.nombre.trim().toUpperCase();
-      final siguienteOrden =
-          _categorias.fold<int>(
-            0,
-            (mayor, categoria) =>
-                categoria.orden > mayor ? categoria.orden : mayor,
-          ) +
-          1;
-      await widget.repository.saveCategoria(
-        CategoriaProducto(
-          nombre: nombre,
-          color: _paleta[_categorias.length % _paleta.length],
-          siempreDisponible: false,
-          orden: siguienteOrden,
-          activo: true,
-        ),
-      );
-      final categorias = await widget.repository.getCategorias();
-      final creada = categorias.firstWhere(
-        (categoria) => categoria.nombre.toUpperCase() == nombre,
-      );
-      if (!mounted) return;
-      setState(() {
-        _categorias = categorias;
-        _categoriaId = creada.id;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = 'No se pudo crear la categoría: $error');
-    }
-=======
     if (id == null || !mounted) return;
     final categorias = await widget.repository.getCategorias();
     if (!mounted) return;
@@ -1044,7 +1010,6 @@ class _ProductDialogState extends State<_ProductDialog> {
       _categoriaId = id;
       _error = null;
     });
->>>>>>> 984d55af8ea0c7eff88e313955cab633c427bf22
   }
 
   Future<void> _cargarImagen(ImageSource source) async {

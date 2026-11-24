@@ -92,11 +92,8 @@ class _SalesData {
   final Caja? caja;
   final MenuDia? menu;
   final List<_SaleProduct> productos;
-<<<<<<< HEAD
-=======
 
   /// Categorías del catálogo, en el orden canónico de la base (para los chips).
->>>>>>> 984d55af8ea0c7eff88e313955cab633c427bf22
   final List<CategoriaProducto> categorias;
   final List<Pedido> pedidos;
   final _SaleProduct? sopaDelDia;
@@ -188,9 +185,6 @@ class _SalesPageState extends State<SalesPage> {
         if (producto.id != null) producto.id!: producto,
     };
     final presentaciones = await _catalogRepository.getPresentaciones();
-    final categorias = await _catalogRepository.getCategorias(
-      soloActivas: true,
-    );
     for (final item in menuItems) {
       final producto = productoPorId[item.productoId];
       if (producto == null || !producto.activo) continue;
@@ -859,8 +853,8 @@ class _SalesPageState extends State<SalesPage> {
   }
 
   /// Categorías con productos en el catálogo, en el orden canónico de la base
-  /// (PLATOS SUELTOS, SOPAS, BEBIDAS CALIENTES, REFRESCOS, FRAPPES, COMBOS,
-  /// VENTA DIRECTA y las que cree el usuario) y con el color de la categoría.
+  /// (PLATOS SUELTOS, SOPAS, REFRESCOS, COMBOS, VENTA DIRECTA y las que cree el
+  /// usuario) y con el color de la categoría.
   List<CategoriaProducto> _categoriasDelCatalogo(_SalesData data) {
     final presentes = <String, _SaleProduct>{};
     for (final producto in data.productos) {
@@ -911,29 +905,8 @@ class _SalesPageState extends State<SalesPage> {
   }
 
   Widget _filtros(BuildContext context, _SalesData data) {
-<<<<<<< HEAD
-    final porNombre = <String, CategoriaProducto>{
-      for (final categoria in data.categorias) categoria.nombre: categoria,
-    };
-    final colorPorProducto = <String, int>{
-      for (final producto in data.productos)
-        producto.categoriaNombre: producto.categoriaColor,
-    };
-    // Solo se muestran categorías con al menos un producto en venta, en el
-    // mismo orden que el catálogo. Las que no existan en la tabla (datos
-    // legados) se agregan al final.
-    final nombres = <String>[
-      for (final categoria in data.categorias)
-        if (colorPorProducto.containsKey(categoria.nombre)) categoria.nombre,
-      ...(colorPorProducto.keys
-          .where((nombre) => !porNombre.containsKey(nombre))
-          .toList()
-        ..sort()),
-    ];
-    final scheme = Theme.of(context).colorScheme;
-=======
     final categorias = _categoriasDelCatalogo(data);
->>>>>>> 984d55af8ea0c7eff88e313955cab633c427bf22
+    final scheme = Theme.of(context).colorScheme;
     return AppCard(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -949,46 +922,12 @@ class _SalesPageState extends State<SalesPage> {
               onChanged: (value) => setState(() => _search = value),
             ),
           ),
-<<<<<<< HEAD
-          ChoiceChip(
-            label: const Text('Todas'),
-            selected: _categoria == null,
-            selectedColor: scheme.primaryContainer,
-            onSelected: (_) => setState(() => _categoria = null),
-          ),
-          ...nombres.map((nombre) {
-            final color = Color(
-              porNombre[nombre]?.color ?? colorPorProducto[nombre]!,
-            );
-            final seleccionada = _categoria == nombre;
-            return ChoiceChip(
-              showCheckmark: false,
-              avatar: Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              label: Text(nombre),
-              labelStyle: TextStyle(
-                color: seleccionada
-                    ? scheme.onSurface
-                    : scheme.onSurfaceVariant,
-                fontWeight: seleccionada ? FontWeight.w700 : FontWeight.w600,
-              ),
-              selected: seleccionada,
-              selectedColor: color.withValues(alpha: 0.18),
-              side: BorderSide(color: color.withValues(alpha: 0.55)),
-              onSelected: (_) => setState(() => _categoria = nombre),
-            );
-          }),
-=======
           const SizedBox(height: 10),
           // Franja deslizable sin barra de scroll visible: se desliza con el
           // dedo o el ratón sin mostrar el indicador.
           ScrollConfiguration(
-            behavior: ScrollConfiguration.of(
-              context,
-            ).copyWith(scrollbars: false),
+            behavior: ScrollConfiguration.of(context)
+                .copyWith(scrollbars: false),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -997,33 +936,49 @@ class _SalesPageState extends State<SalesPage> {
                     key: _chipTodasKey,
                     label: const Text('Todas'),
                     selected: _categoria == null,
+                    selectedColor: scheme.primaryContainer,
                     onSelected: (_) => _seleccionarCategoria(null),
                   ),
-                  for (final categoria in categorias) ...[
-                    const SizedBox(width: 8),
-                    ChoiceChip(
-                      key: _chipKeys.putIfAbsent(
-                        categoria.nombre,
-                        () => GlobalKey(),
-                      ),
-                      avatar: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: Color(categoria.color),
-                          shape: BoxShape.circle,
+                  ...categorias.map((categoria) {
+                    final color = Color(categoria.color);
+                    final seleccionada = _categoria == categoria.nombre;
+                    return Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: ChoiceChip(
+                        key: _chipKeys.putIfAbsent(
+                          categoria.nombre,
+                          () => GlobalKey(),
                         ),
+                        showCheckmark: false,
+                        avatar: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        label: Text(categoria.nombre),
+                        labelStyle: TextStyle(
+                          color: seleccionada
+                              ? scheme.onSurface
+                              : scheme.onSurfaceVariant,
+                          fontWeight: seleccionada
+                              ? FontWeight.w700
+                              : FontWeight.w600,
+                        ),
+                        selected: seleccionada,
+                        selectedColor: color.withValues(alpha: 0.18),
+                        side: BorderSide(color: color.withValues(alpha: 0.55)),
+                        onSelected: (_) =>
+                            _seleccionarCategoria(categoria.nombre),
                       ),
-                      label: Text(categoria.nombre),
-                      selected: _categoria == categoria.nombre,
-                      onSelected: (_) => _seleccionarCategoria(categoria.nombre),
-                    ),
-                  ],
+                    );
+                  }),
                 ],
               ),
             ),
           ),
->>>>>>> 984d55af8ea0c7eff88e313955cab633c427bf22
         ],
       ),
     );

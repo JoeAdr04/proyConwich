@@ -278,19 +278,10 @@ class CatalogRepository {
       'activo': categoria.activo ? 1 : 0,
     };
     if (categoria.id == null) {
-<<<<<<< HEAD
+      // La fecha de creación permite eliminar después las categorías que
+      // quedaron vacías.
       values['creado_en'] = sqlNow();
-      await db.insert('categorias_producto', values);
-    } else {
-      await db.update(
-        'categorias_producto',
-        values,
-        where: 'id = ?',
-        whereArgs: [categoria.id],
-      );
-=======
       return db.insert('categorias_producto', values);
->>>>>>> 984d55af8ea0c7eff88e313955cab633c427bf22
     }
     await db.update(
       'categorias_producto',
@@ -311,15 +302,22 @@ class CatalogRepository {
     );
   }
 
-<<<<<<< HEAD
-  /// Categorías base que la lógica del menú necesita siempre, aunque estén
-  /// vacías. Nunca se eliminan automáticamente.
+  /// Categorías que el sistema usa por nombre (sopa, completo, presentaciones,
+  /// combos y venta directa). Solo admiten cambiar el color: renombrarlas o
+  /// eliminarlas rompe esos flujos. Tampoco se borran cuando quedan vacías.
   static const categoriasProtegidas = <String>{
     'PLATOS SUELTOS',
     'SOPAS',
     'REFRESCOS',
     'COMBOS',
+    'VENTA DIRECTA',
+    // Nombres heredados: se protegen solo por compatibilidad con bases viejas.
+    'BEBIDAS CALIENTES',
+    'FRAPPES',
   };
+
+  static bool esCategoriaProtegida(String nombre) =>
+      categoriasProtegidas.contains(nombre.trim().toUpperCase());
 
   /// Borra las categorías que quedaron sin productos después de [dias] días.
   /// Solo elimina filas sin productos asociados (respeta la clave foránea de
@@ -360,23 +358,7 @@ class CatalogRepository {
       debugPrint('No se pudieron limpiar las categorías vacías: $error');
       return 0;
     }
-=======
-  /// Categorías que el sistema usa por nombre (sopa, completo, presentaciones,
-  /// combos y venta directa). Renombrarlas o eliminarlas rompe esos flujos y la
-  /// app las vuelve a sembrar al abrir la base, así que solo se les permite
-  /// cambiar el color.
-  static const _categoriasProtegidas = {
-    'PLATOS SUELTOS',
-    'SOPAS',
-    'BEBIDAS CALIENTES',
-    'REFRESCOS',
-    'FRAPPES',
-    'COMBOS',
-    'VENTA DIRECTA',
-  };
-
-  static bool esCategoriaProtegida(String nombre) =>
-      _categoriasProtegidas.contains(nombre.trim().toUpperCase());
+  }
 
   /// Cuántos productos (activos o no) usan la categoría.
   Future<int> countProductosCategoria(int categoriaId) async {
@@ -414,7 +396,6 @@ class CatalogRepository {
       );
     }
     await db.delete('categorias_producto', where: 'id = ?', whereArgs: [id]);
->>>>>>> 984d55af8ea0c7eff88e313955cab633c427bf22
   }
 
   Future<List<UnidadMedida>> getUnidades() async {
