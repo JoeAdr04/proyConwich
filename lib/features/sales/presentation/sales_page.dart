@@ -92,6 +92,11 @@ class _SalesData {
   final Caja? caja;
   final MenuDia? menu;
   final List<_SaleProduct> productos;
+<<<<<<< HEAD
+=======
+
+  /// Categorías del catálogo, en el orden canónico de la base (para los chips).
+>>>>>>> 984d55af8ea0c7eff88e313955cab633c427bf22
   final List<CategoriaProducto> categorias;
   final List<Pedido> pedidos;
   final _SaleProduct? sopaDelDia;
@@ -136,6 +141,9 @@ class _SalesPageState extends State<SalesPage> {
   bool _saving = false;
   bool _mostrarFueraMenu = false;
   bool _paraLlevar = false;
+  // Llaves de los chips de categorías para desplazar la franja al elegido.
+  final _chipTodasKey = GlobalKey();
+  final _chipKeys = <String, GlobalKey>{};
 
   @override
   void initState() {
@@ -174,6 +182,7 @@ class _SalesPageState extends State<SalesPage> {
     // los platos del menú y los productos fuera del menú. Antes se hacía una
     // consulta individual por cada producto.
     final activos = await _catalogRepository.getProductos(soloActivos: true);
+    final categorias = await _catalogRepository.getCategorias();
     final productoPorId = <int, Producto>{
       for (final producto in activos)
         if (producto.id != null) producto.id!: producto,
@@ -849,7 +858,60 @@ class _SalesPageState extends State<SalesPage> {
     );
   }
 
+  /// Categorías con productos en el catálogo, en el orden canónico de la base
+  /// (PLATOS SUELTOS, SOPAS, BEBIDAS CALIENTES, REFRESCOS, FRAPPES, COMBOS,
+  /// VENTA DIRECTA y las que cree el usuario) y con el color de la categoría.
+  List<CategoriaProducto> _categoriasDelCatalogo(_SalesData data) {
+    final presentes = <String, _SaleProduct>{};
+    for (final producto in data.productos) {
+      presentes.putIfAbsent(
+        producto.categoriaNombre.trim().toUpperCase(),
+        () => producto,
+      );
+    }
+    final resultado = <CategoriaProducto>[];
+    final vistas = <String>{};
+    for (final categoria in data.categorias) {
+      final clave = categoria.nombre.trim().toUpperCase();
+      if (!presentes.containsKey(clave) || !vistas.add(clave)) continue;
+      resultado.add(categoria);
+    }
+    // Categorías de productos sin registro en la lista (no debería pasar).
+    for (final entrada in presentes.entries) {
+      if (!vistas.add(entrada.key)) continue;
+      resultado.add(
+        CategoriaProducto(
+          nombre: entrada.value.categoriaNombre,
+          color: entrada.value.categoriaColor,
+          siempreDisponible: false,
+          orden: 1000,
+          activo: true,
+        ),
+      );
+    }
+    return resultado;
+  }
+
+  void _seleccionarCategoria(String? categoria) {
+    setState(() => _categoria = categoria);
+    // La franja es deslizable: se lleva el chip elegido a la vista.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final key = categoria == null
+          ? _chipTodasKey
+          : _chipKeys.putIfAbsent(categoria, () => GlobalKey());
+      final contexto = key.currentContext;
+      if (contexto != null) {
+        Scrollable.ensureVisible(
+          contexto,
+          duration: const Duration(milliseconds: 250),
+          alignment: 0.5,
+        );
+      }
+    });
+  }
+
   Widget _filtros(BuildContext context, _SalesData data) {
+<<<<<<< HEAD
     final porNombre = <String, CategoriaProducto>{
       for (final categoria in data.categorias) categoria.nombre: categoria,
     };
@@ -869,12 +931,13 @@ class _SalesPageState extends State<SalesPage> {
         ..sort()),
     ];
     final scheme = Theme.of(context).colorScheme;
+=======
+    final categorias = _categoriasDelCatalogo(data);
+>>>>>>> 984d55af8ea0c7eff88e313955cab633c427bf22
     return AppCard(
       padding: const EdgeInsets.all(12),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 280,
@@ -886,6 +949,7 @@ class _SalesPageState extends State<SalesPage> {
               onChanged: (value) => setState(() => _search = value),
             ),
           ),
+<<<<<<< HEAD
           ChoiceChip(
             label: const Text('Todas'),
             selected: _categoria == null,
@@ -917,6 +981,49 @@ class _SalesPageState extends State<SalesPage> {
               onSelected: (_) => setState(() => _categoria = nombre),
             );
           }),
+=======
+          const SizedBox(height: 10),
+          // Franja deslizable sin barra de scroll visible: se desliza con el
+          // dedo o el ratón sin mostrar el indicador.
+          ScrollConfiguration(
+            behavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(scrollbars: false),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ChoiceChip(
+                    key: _chipTodasKey,
+                    label: const Text('Todas'),
+                    selected: _categoria == null,
+                    onSelected: (_) => _seleccionarCategoria(null),
+                  ),
+                  for (final categoria in categorias) ...[
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      key: _chipKeys.putIfAbsent(
+                        categoria.nombre,
+                        () => GlobalKey(),
+                      ),
+                      avatar: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: Color(categoria.color),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      label: Text(categoria.nombre),
+                      selected: _categoria == categoria.nombre,
+                      onSelected: (_) => _seleccionarCategoria(categoria.nombre),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+>>>>>>> 984d55af8ea0c7eff88e313955cab633c427bf22
         ],
       ),
     );
@@ -925,7 +1032,9 @@ class _SalesPageState extends State<SalesPage> {
   List<_SaleProduct> _productosFiltrados(_SalesData data) {
     final term = _search.trim().toLowerCase();
     return data.productos.where((producto) {
-      if (_categoria != null && producto.categoriaNombre != _categoria) {
+      if (_categoria != null &&
+          producto.categoriaNombre.trim().toUpperCase() !=
+              _categoria!.trim().toUpperCase()) {
         return false;
       }
       return term.isEmpty || producto.nombre.toLowerCase().contains(term);

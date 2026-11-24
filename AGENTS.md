@@ -85,10 +85,26 @@ Flutter app (POS de restaurante "Conwich"). Paquete Dart: `test_code_02` — los
   (solo categoría `REFRESCOS`); en Ventas, al tocar el refresco se elige la presentación. El
   stock sigue siendo del producto base; la presentación aporta nombre y precio (se conservan
   en el pedido vía `CartLine.presentacionId`).
+<<<<<<< HEAD
 - `_afterOpen` siembra categorías planas: `PLATOS SUELTOS`, `SOPAS`, `REFRESCOS` y `COMBOS`
   (esta última siempre disponible). No hay categorías padre ni subcategorías (`parent_id` queda
   en NULL).
   Las categorías se guardan siempre en mayúsculas y se pueden crear nuevas desde Productos.
+=======
+- `_afterOpen` siembra categorías planas: `PLATOS SUELTOS`, `SOPAS`, `BEBIDAS CALIENTES`,
+  `REFRESCOS`, `FRAPPES` y `COMBOS` (esta última siempre disponible). No hay categorías padre ni
+  subcategorías (`parent_id` queda en NULL).
+  Las categorías se guardan siempre en mayúsculas y se gestionan desde el **desplegable "Categoría"
+  del filtro de la vista de Productos** (no dentro de los formularios): al tocarlo abre una lista con
+  la fila "Todas", **+ Nueva categoría**, y por fila ✏️ editar y 🗑️ eliminar. El diálogo de
+  categoría deja elegir el color con una paleta más deslizadores de matiz/saturación/brillo
+  (`lib/ui/categoria_editor.dart`, compartido con el botón "Nueva" de los formularios y de Insumos;
+  los desplegables de los formularios solo seleccionan). Las categorías del sistema por nombre (`PLATOS SUELTOS`, `SOPAS`,
+  `BEBIDAS CALIENTES`, `REFRESCOS`, `FRAPPES`, `COMBOS`, `VENTA DIRECTA`) solo admiten cambiar el
+  color: renombrarlas o borrarlas rompe sopa/completo/presentaciones y la siembra las recrearía.
+  Al eliminar una categoría con productos se ofrece moverlos a otra categoría primero
+  (`countProductosCategoria`, `moverProductosCategoria`, `deleteCategoria` en `CatalogRepository`).
+>>>>>>> 984d55af8ea0c7eff88e313955cab633c427bf22
   Los insumos de venta directa guardan su foto en el producto.
   Los filtros de categoría de Ventas muestran solo categorías con productos, en el orden del
   catálogo y con el color de la categoría (punto + relleno suave). En Productos, el filtro
@@ -117,7 +133,12 @@ Flutter app (POS de restaurante "Conwich"). Paquete Dart: `test_code_02` — los
   reservas. Se eliminó el botón "Guardar pendiente de pago", el modo "Agregar al pedido" y la
   sección "Pedidos pendientes de pago".
 - Ventas (tablet/escritorio): el panel **Pedido** queda fijo a la **derecha** (~25%) y el catálogo ocupa
-  el resto (~65%) con **3 productos por columna**; en teléfono el pedido se apila abajo. Debajo
+  el resto (~65%) con **3 productos por columna**; en teléfono el pedido se apila abajo. Los chips de
+  categorías van en una **franja horizontal deslizable sin barra de scroll** (campo de búsqueda
+  arriba): **"Todas"**
+  primero y luego el **orden canónico** de `categorias_producto.orden` (PLATOS SUELTOS, SOPAS,
+  BEBIDAS CALIENTES, REFRESCOS, FRAPPES, COMBOS, VENTA DIRECTA y las del usuario), con el color de
+  la categoría y desplazamiento automático al chip elegido. Debajo
   del catálogo (columna izquierda) está el **historial de ventas del día** con pedido, hora,
   usuario, total, botón **ANULAR** y un botón de **ojo** que abre el detalle en un emergente
   (líneas, pagos y devolución). La sección de **productos agotados/fuera del menú** queda debajo

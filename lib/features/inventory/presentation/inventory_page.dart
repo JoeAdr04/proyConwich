@@ -6,18 +6,8 @@ import '../../../core/catalog_repository.dart';
 import '../../../core/compras_repository.dart';
 import '../../../core/date_utils.dart';
 import '../../../core/session.dart';
+import '../../../ui/categoria_editor.dart';
 import '../../../ui/common.dart';
-
-const _paletaCategorias = <int>[
-  0xFF70452D, // Nogal
-  0xFF3D2419, // Espresso
-  0xFFC18A55, // Caramelo
-  0xFFE8C995, // Dorado
-  0xFF574537, // Texto
-  0xFF2B1A12, // Texto oscuro
-  0xFF70452D, // Nogal
-  0xFFC18A55, // Caramelo
-];
 
 class _InsumosData {
   const _InsumosData({
@@ -694,39 +684,19 @@ class _InsumoDialogState extends State<_InsumoDialog> {
   }
 
   Future<void> _crearCategoria() async {
-    final nombre = await showDialog<String>(
+    final id = await showCategoriaEditor(
       context: context,
-      builder: (_) => const _NuevaCategoriaDialog(),
+      repository: widget.repository,
+      categorias: _categorias,
     );
-    if (nombre == null || nombre.trim().isEmpty) return;
-    try {
-      await widget.repository.saveCategoria(
-        CategoriaProducto(
-          nombre: nombre.trim(),
-          color:
-              _paletaCategorias[_categorias.length % _paletaCategorias.length],
-          siempreDisponible: false,
-          orden: _categorias.length,
-          activo: true,
-        ),
-      );
-      final categorias = await widget.repository.getCategorias();
-      CategoriaProducto? creada;
-      for (final categoria in categorias) {
-        if (categoria.nombre == nombre.trim()) {
-          creada = categoria;
-          break;
-        }
-      }
-      if (!mounted) return;
-      setState(() {
-        _categorias = categorias;
-        _categoriaVentaId = creada?.id ?? _categoriaVentaId;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = 'No se pudo crear la categoría: $error');
-    }
+    if (id == null || !mounted) return;
+    final categorias = await widget.repository.getCategorias();
+    if (!mounted) return;
+    setState(() {
+      _categorias = categorias;
+      _categoriaVentaId = id;
+      _error = null;
+    });
   }
 
   Widget _fotoProducto(BuildContext context) {
@@ -1016,68 +986,6 @@ class _InsumoDialogState extends State<_InsumoDialog> {
         FilledButton(
           onPressed: _saving ? null : _save,
           child: Text(_saving ? 'Guardando…' : 'Guardar'),
-        ),
-      ],
-    );
-  }
-}
-
-class _NuevaCategoriaDialog extends StatefulWidget {
-  const _NuevaCategoriaDialog();
-
-  @override
-  State<_NuevaCategoriaDialog> createState() => _NuevaCategoriaDialogState();
-}
-
-class _NuevaCategoriaDialogState extends State<_NuevaCategoriaDialog> {
-  final _controller = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
-      title: const Text('Nueva categoría'),
-      content: DialogSurface(
-        maxWidth: 380,
-        child: Form(
-          key: _formKey,
-          child: TextFormField(
-            controller: _controller,
-            autofocus: true,
-            decoration: appInput(
-              label: 'Nombre',
-              hint: 'Ej. Bebidas, Postres, Snacks',
-            ),
-            validator: (value) => (value == null || value.trim().isEmpty)
-                ? 'Ingresa un nombre'
-                : null,
-            onFieldSubmitted: (_) {
-              if (_formKey.currentState!.validate()) {
-                Navigator.pop(context, _controller.text.trim());
-              }
-            },
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: () {
-            if (_formKey.currentState!.validate()) {
-              Navigator.pop(context, _controller.text.trim());
-            }
-          },
-          child: const Text('Crear'),
         ),
       ],
     );

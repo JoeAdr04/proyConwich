@@ -15,6 +15,7 @@ import 'package:test_code_02/features/products/presentation/products_page.dart';
 import 'package:test_code_02/features/reports/presentation/reports_page.dart';
 import 'package:test_code_02/features/sales/presentation/sales_page.dart';
 import 'package:test_code_02/features/users/presentation/users_page.dart';
+import 'package:test_code_02/ui/categoria_editor.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -168,20 +169,79 @@ void main() {
         await tester.pump();
       }
 
-      final filtro = tester.widget<DropdownButtonFormField<int?>>(
-        find.byType(DropdownButtonFormField<int?>),
+      // El menú se ancla al campo y muestra acciones junto a cada categoría;
+      // el formulario de edición solo se abre al tocar el lápiz.
+      await tester.tap(find.byType(CategoriaPickerField));
+      await tester.pumpAndSettle();
+      expect(find.text('Categorías'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('Nueva categoría'), findsNothing);
+      final filaA = find.widgetWithText(ListTile, 'CATEGORIA A');
+      expect(
+        find.descendant(
+          of: filaA,
+          matching: find.byIcon(Icons.edit_outlined),
+        ),
+        findsOneWidget,
       );
-      filtro.onChanged!(categoriaA.id);
+      expect(
+        find.descendant(
+          of: filaA,
+          matching: find.byIcon(Icons.delete_outline),
+        ),
+        findsOneWidget,
+      );
+      final filaSistema = find.widgetWithText(ListTile, 'REFRESCOS');
+      final papeleraSistema = find.descendant(
+        of: filaSistema,
+        matching: find.byIcon(Icons.delete_outline),
+      );
+      expect(papeleraSistema, findsOneWidget);
+      final botonPapeleraSistema = find.ancestor(
+        of: papeleraSistema,
+        matching: find.byType(IconButton),
+      );
+      expect(
+        tester.widget<IconButton>(botonPapeleraSistema).onPressed,
+        isNull,
+      );
+      final editar = find.descendant(
+        of: filaA,
+        matching: find.byTooltip('Editar'),
+      );
+      await tester.ensureVisible(editar);
       await tester.pump();
+      await tester.tap(editar);
+      await tester.pumpAndSettle();
+      expect(find.text('Editar categoría'), findsOneWidget);
+      await tester.tap(find.text('Cancelar'));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(filaA);
+      await tester.pump();
+      await tester.tap(filaA);
+      for (var i = 0; i < 10; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+      }
       expect(find.text('Plato A'), findsOneWidget);
       expect(find.text('Plato B'), findsNothing);
       expect(find.text('Almuerzo del día'), findsNothing);
 
-      final filtroB = tester.widget<DropdownButtonFormField<int?>>(
-        find.byType(DropdownButtonFormField<int?>),
-      );
-      filtroB.onChanged!(categoriaB.id);
+      await tester.tap(find.byType(CategoriaPickerField));
+      await tester.pumpAndSettle();
+      final filaB = find.widgetWithText(ListTile, 'CATEGORIA B');
+      await tester.ensureVisible(filaB);
       await tester.pump();
+      await tester.tap(filaB);
+      for (var i = 0; i < 10; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+      }
       expect(find.text('Plato B'), findsOneWidget);
       expect(find.text('Plato A'), findsNothing);
     },
