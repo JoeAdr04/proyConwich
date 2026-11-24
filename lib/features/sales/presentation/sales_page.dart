@@ -83,6 +83,7 @@ class _SalesData {
     required this.caja,
     required this.menu,
     required this.productos,
+    required this.categorias,
     required this.pedidos,
     required this.sopaDelDia,
     required this.precioAlmuerzo,
@@ -91,6 +92,7 @@ class _SalesData {
   final Caja? caja;
   final MenuDia? menu;
   final List<_SaleProduct> productos;
+  final List<CategoriaProducto> categorias;
   final List<Pedido> pedidos;
   final _SaleProduct? sopaDelDia;
 
@@ -177,6 +179,9 @@ class _SalesPageState extends State<SalesPage> {
         if (producto.id != null) producto.id!: producto,
     };
     final presentaciones = await _catalogRepository.getPresentaciones();
+    final categorias = await _catalogRepository.getCategorias(
+      soloActivas: true,
+    );
     for (final item in menuItems) {
       final producto = productoPorId[item.productoId];
       if (producto == null || !producto.activo) continue;
@@ -261,6 +266,7 @@ class _SalesPageState extends State<SalesPage> {
       caja: caja,
       menu: menu,
       productos: productos.values.toList(),
+      categorias: categorias,
       pedidos: pedidos,
       sopaDelDia: sopas.isEmpty ? null : sopas.first,
       precioAlmuerzo: menu?.precioAlmuerzo,
@@ -844,12 +850,25 @@ class _SalesPageState extends State<SalesPage> {
   }
 
   Widget _filtros(BuildContext context, _SalesData data) {
-    final categorias =
-        data.productos
-            .map((producto) => producto.categoriaNombre)
-            .toSet()
-            .toList()
-          ..sort();
+    final porNombre = <String, CategoriaProducto>{
+      for (final categoria in data.categorias) categoria.nombre: categoria,
+    };
+    final colorPorProducto = <String, int>{
+      for (final producto in data.productos)
+        producto.categoriaNombre: producto.categoriaColor,
+    };
+    // Solo se muestran categorías con al menos un producto en venta, en el
+    // mismo orden que el catálogo. Las que no existan en la tabla (datos
+    // legados) se agregan al final.
+    final nombres = <String>[
+      for (final categoria in data.categorias)
+        if (colorPorProducto.containsKey(categoria.nombre)) categoria.nombre,
+      ...(colorPorProducto.keys
+          .where((nombre) => !porNombre.containsKey(nombre))
+          .toList()
+        ..sort()),
+    ];
+    final scheme = Theme.of(context).colorScheme;
     return AppCard(
       padding: const EdgeInsets.all(12),
       child: Wrap(
@@ -870,15 +889,34 @@ class _SalesPageState extends State<SalesPage> {
           ChoiceChip(
             label: const Text('Todas'),
             selected: _categoria == null,
+            selectedColor: scheme.primaryContainer,
             onSelected: (_) => setState(() => _categoria = null),
           ),
-          ...categorias.map(
-            (categoria) => ChoiceChip(
-              label: Text(categoria),
-              selected: _categoria == categoria,
-              onSelected: (_) => setState(() => _categoria = categoria),
-            ),
-          ),
+          ...nombres.map((nombre) {
+            final color = Color(
+              porNombre[nombre]?.color ?? colorPorProducto[nombre]!,
+            );
+            final seleccionada = _categoria == nombre;
+            return ChoiceChip(
+              showCheckmark: false,
+              avatar: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              label: Text(nombre),
+              labelStyle: TextStyle(
+                color: seleccionada
+                    ? scheme.onSurface
+                    : scheme.onSurfaceVariant,
+                fontWeight: seleccionada ? FontWeight.w700 : FontWeight.w600,
+              ),
+              selected: seleccionada,
+              selectedColor: color.withValues(alpha: 0.18),
+              side: BorderSide(color: color.withValues(alpha: 0.55)),
+              onSelected: (_) => setState(() => _categoria = nombre),
+            );
+          }),
         ],
       ),
     );

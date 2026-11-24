@@ -41,7 +41,7 @@ Flutter app (POS de restaurante "Conwich"). Paquete Dart: `test_code_02` — los
 
 ## Base de datos (SQLite / sqflite)
 - `lib/data/database/app_database.dart` — singleton `AppDatabase.instance`, schema versionado a mano.
-- `version: 19` (`AppDatabase.schemaVersion`); DB file `sazon_restaurante_v2.db`. Las claves
+- `version: 20` (`AppDatabase.schemaVersion`); DB file `sazon_restaurante_v2.db`. Las claves
   foráneas se desactivan durante la migración y se activan en `onOpen` (`PRAGMA foreign_keys = ON`).
 - Para cambiar schema: subir `version`, añadir `onUpgrade`. Las vistas `v_stock_insumos` y
   `v_stock_productos` se dropean y recrean en cada upgrade (ya se hace en `_createSchema`).
@@ -63,6 +63,10 @@ Flutter app (POS de restaurante "Conwich"). Paquete Dart: `test_code_02` — los
   categoría `COMBOS` (`siempre_disponible = 1`). El índice `idx_detalle_componente` se crea en
   `_afterOpen` porque depende de `detalle_pedido.es_componente`, columna que llega en una
   migración.
+- La v20 agrega `categorias_producto.creado_en` y deja las categorías base en
+  `PLATOS SUELTOS`, `SOPAS`, `REFRESCOS` y `COMBOS`. `CatalogRepository.limpiarCategoriasVacias()`
+  (llamado al arrancar) borra las categorías vacías con más de 7 días; nunca borra las base ni
+  las que tienen `siempre_disponible = 1`.
 - `unidades_medida.familia`/`factor_base` permiten convertir L↔ml y kg↔g en las recetas.
 - La receta es opcional. Al vender, el consumo se limita al stock disponible (nunca deja
   negativos) y el faltante queda registrado en `faltantes_insumo` (se consulta en Reportes).
@@ -81,11 +85,14 @@ Flutter app (POS de restaurante "Conwich"). Paquete Dart: `test_code_02` — los
   (solo categoría `REFRESCOS`); en Ventas, al tocar el refresco se elige la presentación. El
   stock sigue siendo del producto base; la presentación aporta nombre y precio (se conservan
   en el pedido vía `CartLine.presentacionId`).
-- `_afterOpen` siembra categorías planas: `PLATOS SUELTOS`, `SOPAS`, `BEBIDAS CALIENTES`,
-  `REFRESCOS`, `FRAPPES` y `COMBOS` (esta última siempre disponible). No hay categorías padre ni
-  subcategorías (`parent_id` queda en NULL).
+- `_afterOpen` siembra categorías planas: `PLATOS SUELTOS`, `SOPAS`, `REFRESCOS` y `COMBOS`
+  (esta última siempre disponible). No hay categorías padre ni subcategorías (`parent_id` queda
+  en NULL).
   Las categorías se guardan siempre en mayúsculas y se pueden crear nuevas desde Productos.
   Los insumos de venta directa guardan su foto en el producto.
+  Los filtros de categoría de Ventas muestran solo categorías con productos, en el orden del
+  catálogo y con el color de la categoría (punto + relleno suave). En Productos, el filtro
+  **Recientes** ordena por `creado_en` descendente.
 - `cajas` usa `numero_turno` consecutivo por día (`Turno 1, 2, 3…`), no `MAÑANA/TARDE`.
   Cerrar una caja ya no cierra el menú del día.
 - Menú del día muestra todas las categorías de productos; las sopas se eligen con tarjetas que
@@ -153,6 +160,11 @@ Flutter app (POS de restaurante "Conwich"). Paquete Dart: `test_code_02` — los
 - Flujo: `AppDatabase.instance.close()` → copiar el `.db` → validar cabecera `SQLite format 3\0`.
   Restaurar reemplaza todo, guarda antes una copia en `<documentos>/respaldos_seguridad/` (máx. 5)
   y revierte si `PRAGMA integrity_check` falla.
+- Al restaurar se conservan los **administradores de esta instalación** que no existan en la
+  copia (se comparan por `usuario`, sin distinguir mayúsculas) y se limpia `sesion_actual` para
+  forzar un login limpio. Los cajeros/vendedores locales no se conservan. Si tras restaurar no
+  queda ningún ADMIN activo, se reactiva o siembra `admin/1234` con `debe_cambiar_password = 1`.
+  `BackupService.adminsConservados` informa cuántos se conservaron.
 - Las copias nuevas se llaman `conwich_respaldo_<fecha>.db` y
   `conwich_seguridad_<fecha>.db`; el formato de fecha no cambia. La compatibilidad al restaurar
   depende de `schemaVersion`, no del nombre del archivo. El `.db` de trabajo sigue siendo

@@ -263,16 +263,24 @@ class _BackupPageState extends State<BackupPage> {
     try {
       await _service.restaurar(inspeccion);
       if (!mounted) return;
+      final conservados = _service.adminsConservados;
+      final mensaje = StringBuffer(
+        'La información se restauró correctamente. Por seguridad se '
+        'cerrará la sesión: ingresa con el usuario y la contraseña que '
+        'existían en la copia.',
+      );
+      if (conservados > 0) {
+        mensaje.write(
+          '\n\nSe conservaron $conservados administrador(es) de esta '
+          'instalación que no estaban en la copia.',
+        );
+      }
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
           title: const Text('Copia restaurada'),
-          content: const Text(
-            'La información se restauró correctamente. Por seguridad se '
-            'cerrará la sesión: ingresa con el usuario y la contraseña que '
-            'existían en la copia.',
-          ),
+          content: Text(mensaje.toString()),
           actions: [
             FilledButton(
               onPressed: () => Navigator.pop(context),
@@ -422,9 +430,8 @@ class _BackupPageState extends State<BackupPage> {
               Expanded(
                 child: Text(
                   'Respaldo automático en Google Drive',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
               if (config != null)
@@ -438,9 +445,8 @@ class _BackupPageState extends State<BackupPage> {
           Text(
             'Elige una carpeta de Drive desde el selector de Android. Cada '
             'copia se guarda ahí sin cuentas de Google Cloud ni suscripciones.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
+            style: Theme.of(context).textTheme.bodySmall
+                ?.copyWith(color: scheme.onSurfaceVariant),
           ),
           if (!_drive.disponible)
             Padding(

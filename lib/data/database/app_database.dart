@@ -16,7 +16,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   /// Versión de esquema actual. Subir junto con `onUpgrade`.
-  static const int schemaVersion = 19;
+  static const int schemaVersion = 20;
 
   static const String nombreArchivo = 'sazon_restaurante_v2.db';
 
@@ -87,6 +87,8 @@ class AppDatabase {
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         await _createSchema(db, newVersion);
+        // La columna `creado_en` debe existir antes de sembrar categorías.
+        await _migrarV20(db);
         await _migrarUnidades(db);
         await _migrarCategorias(db);
         await _migrarCategoriasMayusculas(db);
@@ -134,29 +136,33 @@ class AppDatabase {
   }
 
   /// Categorías base del catálogo. Solo los productos de PLATOS SUELTOS pueden
-  /// venderse como completo junto con la sopa del día.
+  /// venderse como completo junto con la sopa del día. Las categorías sin
+  /// producto se eliminan automáticamente tras una semana.
   Future<void> _seedCategorias(Database db) async {
     const categorias = [
       {'nombre': 'PLATOS SUELTOS', 'color': 0xFFEA580C, 'orden': 1},
       {'nombre': 'SOPAS', 'color': 0xFF2563EB, 'orden': 2},
-      {'nombre': 'BEBIDAS CALIENTES', 'color': 0xFF78350F, 'orden': 3},
-      {'nombre': 'REFRESCOS', 'color': 0xFF16A34A, 'orden': 4},
-      {'nombre': 'FRAPPES', 'color': 0xFF9333EA, 'orden': 5},
+      {'nombre': 'REFRESCOS', 'color': 0xFF16A34A, 'orden': 3},
+      // Los combos se venden sin pasar por el menú del día, igual que las
+      // bebidas: la categoría queda marcada como siempre disponible.
+      {'nombre': 'COMBOS', 'color': 0xFFDB2777, 'orden': 4},
     ];
     for (final categoria in categorias) {
+      final siempreDisponible = categoria['nombre'] == 'COMBOS' ? 1 : 0;
       await db.insert('categorias_producto', {
         'nombre': categoria['nombre'],
         'color': categoria['color'],
         'parent_id': null,
-        'siempre_disponible': 0,
+        'siempre_disponible': siempreDisponible,
         'orden': categoria['orden'],
         'activo': 1,
+        'creado_en': sqlNow(),
       }, conflictAlgorithm: ConflictAlgorithm.ignore);
       await db.update(
         'categorias_producto',
         {
           'parent_id': null,
-          'siempre_disponible': 0,
+          'siempre_disponible': siempreDisponible,
           'orden': categoria['orden'],
           'activo': 1,
         },
@@ -164,22 +170,6 @@ class AppDatabase {
         whereArgs: [categoria['nombre']],
       );
     }
-    // Los combos se venden sin pasar por el menú del día, igual que las
-    // bebidas: la categoría queda marcada como siempre disponible.
-    await db.insert('categorias_producto', {
-      'nombre': 'COMBOS',
-      'color': 0xFFDB2777,
-      'parent_id': null,
-      'siempre_disponible': 1,
-      'orden': 6,
-      'activo': 1,
-    }, conflictAlgorithm: ConflictAlgorithm.ignore);
-    await db.update(
-      'categorias_producto',
-      {'parent_id': null, 'siempre_disponible': 1, 'activo': 1},
-      where: 'nombre = ? COLLATE NOCASE',
-      whereArgs: ['COMBOS'],
-    );
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -257,6 +247,7 @@ class AppDatabase {
         siempre_disponible INTEGER NOT NULL DEFAULT 0,
         orden INTEGER NOT NULL DEFAULT 0,
         activo INTEGER NOT NULL DEFAULT 1,
+        creado_en TEXT,
         FOREIGN KEY (parent_id) REFERENCES categorias_producto(id)
       )
     ''');
@@ -1151,8 +1142,8 @@ class AppDatabase {
       await moverProductos('ALMUERZO', 'PLATOS SUELTOS');
       await moverProductos('GASEOSAS', 'REFRESCOS');
       await moverProductos('JUGOS', 'REFRESCOS');
-      await moverProductos('FRAPES', 'FRAPPES');
-      await moverProductos('BEBIDAS', 'BEBIDAS CALIENTES');
+      await moverProductos('FRAPES', 'REFRESCOS');
+      await moverProductos('BEBIDAS', 'REFRESCOS');
 
       // A partir de esta versión las categorías son planas. Cualquier
       // jerarquía anterior se descarta sin perder los productos.
@@ -1374,6 +1365,24 @@ class AppDatabase {
       );
     } catch (error) {
       debugPrint('No se pudo migrar el esquema v19: $error');
+    }
+  }
+
+  /// v20: fecha de creación de las categorías para poder eliminar las que
+  /// quedaron vacías. Solo agrega la columna y rellena las filas existentes.
+  Future<void> _migrarV20(Database db) async {
+    try {
+      if (!await _tieneColumna(db, 'categorias_producto', 'creado_en')) {
+        await db.execute(
+          'ALTER TABLE categorias_producto ADD COLUMN creado_en TEXT',
+        );
+      }
+      await db.rawUpdate(
+        'UPDATE categorias_producto SET creado_en = ? WHERE creado_en IS NULL',
+        [sqlNow()],
+      );
+    } catch (error) {
+      debugPrint('No se pudo migrar el esquema v20: $error');
     }
   }
 

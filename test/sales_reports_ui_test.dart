@@ -446,13 +446,7 @@ void main() {
       ),
     );
     final categorias = (await tester.runAsync(catalog.getCategorias))!;
-    const nombresCategorias = [
-      'REFRESCOS',
-      'BEBIDAS CALIENTES',
-      'FRAPPES',
-      'COMBOS',
-      'POSTRES',
-    ];
+    const nombresCategorias = ['REFRESCOS', 'COMBOS', 'POSTRES'];
     final productos = <String, int>{};
     for (final nombreCategoria in nombresCategorias) {
       final categoria = categorias.firstWhere(
@@ -731,10 +725,7 @@ void main() {
       find.byType(DataTable).first,
     );
     expect((tablaProductos.rows.last.cells.first.child as Text).data, 'TOTAL');
-    expect(
-      (tablaProductos.rows.last.cells[3].child as Text).data,
-      'Bs 90.00',
-    );
+    expect((tablaProductos.rows.last.cells[3].child as Text).data, 'Bs 90.00');
     expect(tester.takeException(), isNull);
   });
 }

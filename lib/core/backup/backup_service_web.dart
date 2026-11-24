@@ -15,6 +15,9 @@ class BackupService {
 
   bool get disponible => false;
 
+  /// En web no se restaura, así que nunca se conservan administradores.
+  int adminsConservados = 0;
+
   Future<Map<String, Object?>?> metaActual() =>
       AppDatabase.instance.leerAppMeta();
 

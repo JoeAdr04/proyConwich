@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 import '../data/database/app_database.dart';
 import 'date_utils.dart';
@@ -13,6 +13,7 @@ class CategoriaProducto {
     required this.activo,
     this.parentId,
     this.parentNombre,
+    this.creadoEn,
   });
 
   final int? id;
@@ -23,6 +24,10 @@ class CategoriaProducto {
   final bool activo;
   final int? parentId;
   final String? parentNombre;
+
+  /// Fecha de creación en la BD. Se usa para eliminar las categorías que
+  /// quedaron sin productos después de una semana.
+  final DateTime? creadoEn;
 
   bool get esSubcategoria => parentId != null;
 
@@ -74,6 +79,7 @@ class Producto {
     this.categoriaSiempreDisponible = false,
     this.insumoVinculadoId,
     this.esCompuesto = false,
+    this.creadoEn,
   });
 
   final int? id;
@@ -107,6 +113,9 @@ class Producto {
 
   /// Producto compuesto (almuerzo completo o combo) armado desde el menú.
   final bool esCompuesto;
+
+  /// Fecha de creación en la BD. Se usa para el filtro "Recientes".
+  final DateTime? creadoEn;
 
   bool get esDirecto => tipo == 'DIRECTO';
   bool get esVentaDirecta => insumoVinculadoId != null;
@@ -251,6 +260,7 @@ class CatalogRepository {
             activo: (row['activo'] as num).toInt() == 1,
             parentId: row['parent_id'] as int?,
             parentNombre: row['parent_nombre'] as String?,
+            creadoEn: parseSqlDateTime(row['creado_en'] as String?),
           ),
         )
         .toList();
@@ -267,6 +277,7 @@ class CatalogRepository {
       'activo': categoria.activo ? 1 : 0,
     };
     if (categoria.id == null) {
+      values['creado_en'] = sqlNow();
       await db.insert('categorias_producto', values);
     } else {
       await db.update(
@@ -286,6 +297,56 @@ class CatalogRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  /// Categorías base que la lógica del menú necesita siempre, aunque estén
+  /// vacías. Nunca se eliminan automáticamente.
+  static const categoriasProtegidas = <String>{
+    'PLATOS SUELTOS',
+    'SOPAS',
+    'REFRESCOS',
+    'COMBOS',
+  };
+
+  /// Borra las categorías que quedaron sin productos después de [dias] días.
+  /// Solo elimina filas sin productos asociados (respeta la clave foránea de
+  /// `productos.categoria_id`) y conserva las categorías base.
+  /// Devuelve la cantidad de categorías eliminadas.
+  Future<int> limpiarCategoriasVacias({int dias = 7}) async {
+    final db = await AppDatabase.instance.database;
+    try {
+      final limite = sqlDateTime(DateTime.now().subtract(Duration(days: dias)));
+      final rows = await db.rawQuery(
+        '''
+        SELECT c.id, c.nombre, c.siempre_disponible
+        FROM categorias_producto c
+        WHERE COALESCE(c.creado_en, ?) < ?
+          AND c.parent_id IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM productos p WHERE p.categoria_id = c.id
+          )
+        ''',
+        [limite, limite],
+      );
+      final protegidas = categoriasProtegidas;
+      var eliminadas = 0;
+      for (final row in rows) {
+        final nombre = (row['nombre'] as String? ?? '').trim().toUpperCase();
+        if (protegidas.contains(nombre)) continue;
+        final id = row['id']! as int;
+        if ((row['siempre_disponible'] as num?)?.toInt() == 1) continue;
+        await db.delete(
+          'categorias_producto',
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        eliminadas++;
+      }
+      return eliminadas;
+    } catch (error) {
+      debugPrint('No se pudieron limpiar las categorías vacías: $error');
+      return 0;
+    }
   }
 
   Future<List<UnidadMedida>> getUnidades() async {
@@ -406,12 +467,7 @@ class CatalogRepository {
     final values = <String, Object?>{'activo': activo ? 1 : 0};
     // Al reactivar, el producto vuelve a estar disponible para la venta.
     if (activo) values['agotado'] = 0;
-    await db.update(
-      'productos',
-      values,
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    await db.update('productos', values, where: 'id = ?', whereArgs: [id]);
     if (activo) {
       // Si el producto ya estaba en el menú de hoy, se rehabilita solo.
       await db.rawUpdate(
@@ -1101,6 +1157,7 @@ class CatalogRepository {
         (row['categoria_siempre_disponible'] as num?)?.toInt() == 1,
     insumoVinculadoId: row['insumo_vinculado_id'] as int?,
     esCompuesto: (row['es_compuesto'] as num?)?.toInt() == 1,
+    creadoEn: parseSqlDateTime(row['creado_en'] as String?),
   );
 
   Insumo _insumoFromRow(Map<String, Object?> row) => Insumo(

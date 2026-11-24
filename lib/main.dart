@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import 'core/auth_repository.dart';
+import 'core/catalog_repository.dart';
 import 'core/session.dart';
 import 'features/auth/presentation/login_page.dart';
 import 'features/auth/presentation/onboarding_admin_page.dart';
@@ -254,6 +255,13 @@ class _StartupGateState extends State<StartupGate> {
       final usuario = await _repository.restaurarSesion().timeout(
         const Duration(seconds: 30),
       );
+      // Limpieza silenciosa de categorías que quedaron sin productos. Nunca
+      // debe impedir el arranque ni el inicio de sesión.
+      try {
+        await CatalogRepository().limpiarCategoriasVacias();
+      } catch (_) {
+        // Ignorar: se reintenta en el próximo arranque.
+      }
       if (!mounted) return;
       setState(() {
         _usuario = usuario;

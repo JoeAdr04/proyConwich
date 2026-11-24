@@ -1,9 +1,9 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' show Rect;
 
 import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -12,7 +12,18 @@ import 'package:sqflite/sqflite.dart';
 import '../../data/database/app_database.dart';
 import '../app_info.dart';
 import '../date_utils.dart';
+import '../password_utils.dart';
+import '../session.dart';
 import 'backup_models.dart';
+
+/// Administrador de esta instalación guardado en memoria antes de restaurar,
+/// para poder reinsertarlo si la copia no lo trae.
+class _AdminLocal {
+  const _AdminLocal(this.datos, this.permisos);
+
+  final Map<String, Object?> datos;
+  final List<String> permisos;
+}
 
 /// Implementación nativa del respaldo: copia el archivo SQLite completo.
 class BackupService {
@@ -26,6 +37,10 @@ class BackupService {
 
   late final Future<String> Function()? _rutaTemporal;
   late final Future<String> Function()? _rutaDocumentos;
+
+  /// Administradores de esta instalación que se conservaron en la última
+  /// restauración porque no existían en la copia.
+  int adminsConservados = 0;
 
   Future<Directory> _temporal() async {
     if (_rutaTemporal != null) return Directory(await _rutaTemporal());
@@ -189,6 +204,9 @@ class BackupService {
 
   /// Reemplaza la base actual por la copia indicada. Antes guarda una copia
   /// de seguridad y, si algo falla, la restaura.
+  ///
+  /// Los administradores de esta instalación que no existan en la copia se
+  /// vuelven a insertar para no perder el acceso después de restaurar.
   Future<CopiaSeguridad> restaurar(InspeccionCopia copia) async {
     if (!copia.integridadOk) {
       throw StateError('La copia está dañada o incompleta.');
@@ -200,6 +218,8 @@ class BackupService {
       );
     }
 
+    adminsConservados = 0;
+    final adminsLocales = await _leerAdminsLocales();
     final seguridad = await crearCopiaSeguridad();
     final destino = File(await AppDatabase.instance.rutaArchivo);
     await AppDatabase.instance.close();
@@ -214,6 +234,28 @@ class BackupService {
       if (!ok) {
         throw StateError('La copia restaurada no pasó la verificación.');
       }
+      // Conservar los administradores locales nunca debe impedir la
+      // restauración: si falla, se avisa y se sigue.
+      try {
+        await db.transaction((txn) async {
+          adminsConservados = await _conservarAdminsFaltantes(
+            txn,
+            adminsLocales,
+          );
+          await _asegurarAdminActivo(txn);
+          // La sesión guardada pertenece a la base anterior: se fuerza un
+          // login limpio con las credenciales de la base restaurada.
+          await txn.delete('sesion_actual');
+        });
+      } catch (error) {
+        adminsConservados = 0;
+        debugPrint('No se pudieron conservar los administradores: $error');
+        try {
+          await db.delete('sesion_actual');
+        } catch (_) {
+          // Ignorar.
+        }
+      }
       return seguridad;
     } catch (error) {
       // Revertir al estado anterior.
@@ -226,6 +268,134 @@ class BackupService {
       throw StateError(
         'No se pudo restaurar la copia: $error. Se recuperó el estado anterior.',
       );
+    }
+  }
+
+  /// Lee los administradores (y sus permisos) de la base actual antes de
+  /// reemplazarla.
+  Future<List<_AdminLocal>> _leerAdminsLocales() async {
+    try {
+      final db = await AppDatabase.instance.database;
+      List<Map<String, Object?>> rows;
+      try {
+        rows = await db.query(
+          'usuarios',
+          where: "rol = 'ADMIN' OR UPPER(perfil) = 'ADMIN'",
+        );
+      } catch (_) {
+        // Bases muy antiguas sin la columna `perfil`.
+        rows = await db.query('usuarios', where: "rol = 'ADMIN'");
+      }
+      final admins = <_AdminLocal>[];
+      for (final row in rows) {
+        final id = row['id'] as int?;
+        var permisos = <String>[];
+        if (id != null) {
+          final filas = await db.query(
+            'usuario_permisos',
+            columns: ['permiso'],
+            where: 'usuario_id = ?',
+            whereArgs: [id],
+          );
+          permisos = [for (final fila in filas) fila['permiso']! as String];
+        }
+        admins.add(_AdminLocal(row, permisos));
+      }
+      return admins;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Reinserta los administradores de esta instalación cuyo usuario no exista
+  /// en la copia restaurada. Devuelve cuántos se conservaron.
+  Future<int> _conservarAdminsFaltantes(
+    DatabaseExecutor db,
+    List<_AdminLocal> admins,
+  ) async {
+    var conservados = 0;
+    for (final admin in admins) {
+      final usuario = (admin.datos['usuario'] as String?)?.trim();
+      if (usuario == null || usuario.isEmpty) continue;
+      final existentes = await db.query(
+        'usuarios',
+        columns: ['id'],
+        where: 'LOWER(usuario) = LOWER(?)',
+        whereArgs: [usuario],
+        limit: 1,
+      );
+      // Si la copia ya trae ese usuario, la copia manda.
+      if (existentes.isNotEmpty) continue;
+      final datos = admin.datos;
+      final nuevoId = await db.insert('usuarios', {
+        'nombre': datos['nombre'] ?? usuario,
+        'usuario': usuario,
+        'password_hash': datos['password_hash'],
+        'rol': datos['rol'] ?? 'ADMIN',
+        'perfil': (datos['perfil'] as String?) ?? Perfil.admin,
+        'turno_asignado': datos['turno_asignado'],
+        'sueldo_base': datos['sueldo_base'] ?? 0,
+        'activo': datos['activo'] ?? 1,
+        'debe_cambiar_password': datos['debe_cambiar_password'] ?? 0,
+        'creado_en': datos['creado_en'] ?? sqlNow(),
+      });
+      for (final permiso in admin.permisos) {
+        await db.insert('usuario_permisos', {
+          'usuario_id': nuevoId,
+          'permiso': permiso,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      conservados++;
+    }
+    return conservados;
+  }
+
+  /// Si después de restaurar no queda ningún administrador activo, reactiva
+  /// `admin` o lo siembra con la contraseña por defecto.
+  Future<void> _asegurarAdminActivo(DatabaseExecutor db) async {
+    final count =
+        Sqflite.firstIntValue(
+          await db.rawQuery(
+            "SELECT COUNT(*) FROM usuarios WHERE activo = 1 "
+            "AND (rol = 'ADMIN' OR UPPER(perfil) = 'ADMIN')",
+          ),
+        ) ??
+        0;
+    if (count > 0) return;
+
+    final existente = await db.query(
+      'usuarios',
+      columns: ['id'],
+      where: 'usuario = ? COLLATE NOCASE',
+      whereArgs: ['admin'],
+      limit: 1,
+    );
+    if (existente.isNotEmpty) {
+      await db.update(
+        'usuarios',
+        {'activo': 1},
+        where: 'id = ?',
+        whereArgs: [existente.first['id']],
+      );
+      return;
+    }
+    final id = await db.insert('usuarios', {
+      'nombre': 'Administrador',
+      'usuario': 'admin',
+      'password_hash': hashPassword('1234'),
+      'rol': 'ADMIN',
+      'perfil': Perfil.admin,
+      'turno_asignado': 'AMBOS',
+      'sueldo_base': 0,
+      'activo': 1,
+      'debe_cambiar_password': 1,
+      'creado_en': sqlNow(),
+    });
+    for (final permiso in Permiso.todos) {
+      await db.insert('usuario_permisos', {
+        'usuario_id': id,
+        'permiso': permiso,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
   }
 

@@ -6,8 +6,10 @@ import 'package:path/path.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:test_code_02/core/auth_repository.dart';
+import 'package:test_code_02/core/backup/backup_service.dart';
 import 'package:test_code_02/core/cash_repository.dart';
 import 'package:test_code_02/core/catalog_repository.dart';
+import 'package:test_code_02/core/date_utils.dart';
 import 'package:test_code_02/core/menu_repository.dart';
 import 'package:test_code_02/core/receipt_service.dart';
 import 'package:test_code_02/core/report_repository.dart';
@@ -324,9 +326,7 @@ void main() {
     );
     final historialVentas = await sales.getPedidosDelDia(DateTime.now());
     expect(
-      historialVentas.any(
-        (pedido) => pedido.id == pedidoId && pedido.anulado,
-      ),
+      historialVentas.any((pedido) => pedido.id == pedidoId && pedido.anulado),
       isTrue,
     );
     final resumenAnulado = await reports.getResumen(inicio, fin);
@@ -408,10 +408,7 @@ void main() {
     final resumenFinal = await reports.getResumen(inicio, fin);
     expect(resumenFinal.ventas, 5);
     expect(resumenFinal.cobros, 5);
-    expect(
-      resumenFinal.ganancia,
-      resumenFinal.ventas - resumenFinal.salidas,
-    );
+    expect(resumenFinal.ganancia, resumenFinal.ventas - resumenFinal.salidas);
 
     final usuarios = await auth.getUsuarios();
     expect(usuarios.length, 3);
@@ -1146,8 +1143,10 @@ void main() {
     expect(items.length, 1);
     expect((await menuRepo.getMenu(fecha, 'ALMUERZO'))?.habilitado, isTrue);
     expect(
-      (await menuRepo.getMenuHabilitado(fecha, 'ALMUERZO'))
-          .map((item) => item.productoId),
+      (await menuRepo.getMenuHabilitado(
+        fecha,
+        'ALMUERZO',
+      )).map((item) => item.productoId),
       contains(productoId),
     );
   });
@@ -1159,14 +1158,10 @@ void main() {
     final nombres = categorias.map((categoria) => categoria.nombre).toList();
     expect(
       nombres,
-      containsAll([
-        'PLATOS SUELTOS',
-        'SOPAS',
-        'BEBIDAS CALIENTES',
-        'REFRESCOS',
-        'FRAPPES',
-      ]),
+      containsAll(['PLATOS SUELTOS', 'SOPAS', 'REFRESCOS', 'COMBOS']),
     );
+    expect(nombres, isNot(contains('BEBIDAS CALIENTES')));
+    expect(nombres, isNot(contains('FRAPPES')));
     expect(nombres, isNot(contains('ALMUERZO COMPLETO')));
     expect(nombres, isNot(contains('SOPA')));
     expect(nombres, isNot(contains('SEGUNDO')));
@@ -1669,14 +1664,10 @@ void main() {
         .toList();
     expect(
       nombres,
-      containsAll([
-        'PLATOS SUELTOS',
-        'SOPAS',
-        'BEBIDAS CALIENTES',
-        'REFRESCOS',
-        'FRAPPES',
-      ]),
+      containsAll(['PLATOS SUELTOS', 'SOPAS', 'REFRESCOS', 'COMBOS']),
     );
+    expect(nombres, isNot(contains('BEBIDAS CALIENTES')));
+    expect(nombres, isNot(contains('FRAPPES')));
     expect(nombres, isNot(contains('ALMUERZO')));
     expect(nombres, isNot(contains('PLATO SUELTO')));
     expect(nombres, isNot(contains('COMPLETO')));
@@ -2021,7 +2012,9 @@ void main() {
     final platos = categorias.firstWhere(
       (item) => item.nombre == 'PLATOS SUELTOS',
     );
-    final frappes = categorias.firstWhere((item) => item.nombre == 'FRAPPES');
+    final refrescos = categorias.firstWhere(
+      (item) => item.nombre == 'REFRESCOS',
+    );
 
     Producto producto(
       String nombre,
@@ -2053,7 +2046,7 @@ void main() {
       producto('Silpancho', platos, 10),
     );
     final frappeId = await catalog.saveProducto(
-      producto('Frappe de frutilla', frappes, 14),
+      producto('Frappe de frutilla', refrescos, 14),
     );
 
     final fecha = DateTime.now();
@@ -2221,5 +2214,132 @@ void main() {
     expect(items.length, 1);
     expect(items.single.nombre, 'Churrasco');
     expect(items.where((item) => item.esSopa), isEmpty);
+  });
+
+  test('elimina las categorías vacías después de una semana', () async {
+    final db = await AppDatabase.instance.database;
+    await db.insert('categorias_producto', {
+      'nombre': 'VIEJA VACIA',
+      'color': 0xFF123456,
+      'siempre_disponible': 0,
+      'orden': 90,
+      'activo': 1,
+      'creado_en': '2020-01-01 08:00:00',
+    });
+    final conProductoId = await db.insert('categorias_producto', {
+      'nombre': 'CON PRODUCTO',
+      'color': 0xFF123456,
+      'siempre_disponible': 0,
+      'orden': 91,
+      'activo': 1,
+      'creado_en': '2020-01-01 08:00:00',
+    });
+    await db.insert('productos', {
+      'nombre': 'Producto historico',
+      'categoria_id': conProductoId,
+      'precio': 5,
+      'tipo': 'PREPARADO',
+      'creado_en': '2020-01-01 08:00:00',
+    });
+    await db.insert('categorias_producto', {
+      'nombre': 'NUEVA VACIA',
+      'color': 0xFF123456,
+      'siempre_disponible': 0,
+      'orden': 92,
+      'activo': 1,
+      'creado_en': sqlNow(),
+    });
+
+    final eliminadas = await CatalogRepository().limpiarCategoriasVacias();
+    expect(eliminadas, 1);
+
+    final nombres = (await db.query('categorias_producto'))
+        .map((fila) => fila['nombre']! as String)
+        .toSet();
+    expect(nombres, isNot(contains('VIEJA VACIA')));
+    expect(nombres, contains('CON PRODUCTO'));
+    expect(nombres, contains('NUEVA VACIA'));
+    expect(
+      nombres,
+      containsAll(['PLATOS SUELTOS', 'SOPAS', 'REFRESCOS', 'COMBOS']),
+    );
+  });
+
+  test('los productos exponen su fecha de creación para Recientes', () async {
+    final db = await AppDatabase.instance.database;
+    final categoriaId =
+        (await db.query(
+              'categorias_producto',
+              columns: ['id'],
+              where: 'nombre = ?',
+              whereArgs: ['PLATOS SUELTOS'],
+              limit: 1,
+            )).first['id']!
+            as int;
+    await db.insert('productos', {
+      'nombre': 'Antiguo',
+      'categoria_id': categoriaId,
+      'precio': 10,
+      'tipo': 'PREPARADO',
+      'creado_en': '2024-01-01 08:00:00',
+    });
+    await db.insert('productos', {
+      'nombre': 'Reciente',
+      'categoria_id': categoriaId,
+      'precio': 10,
+      'tipo': 'PREPARADO',
+      'creado_en': '2026-01-01 08:00:00',
+    });
+
+    final productos = await CatalogRepository().getProductos(soloActivos: true);
+    final porNombre = {
+      for (final producto in productos) producto.nombre: producto,
+    };
+    final reciente = porNombre['Reciente']!.creadoEn;
+    final antiguo = porNombre['Antiguo']!.creadoEn;
+    expect(reciente, isNotNull);
+    expect(antiguo, isNotNull);
+    expect(reciente!.isAfter(antiguo!), isTrue);
+  });
+
+  test('restaurar conserva los administradores de esta instalación', () async {
+    final directorio = await Directory.systemTemp.createTemp('conwich_res');
+    addTearDown(() async {
+      try {
+        await directorio.delete(recursive: true);
+      } catch (_) {
+        // Ignorar.
+      }
+    });
+    final service = BackupService(
+      rutaTemporal: () async => directorio.path,
+      rutaDocumentos: () async => directorio.path,
+    );
+    final auth = AuthRepository();
+    final admin = (await auth.login('admin', '1234'))!;
+
+    // Copia de la instalación antes de configurar el primer usuario.
+    final copia = await service.crearCopia(motivo: 'prueba');
+
+    // Primer acceso: el administrador cambia sus credenciales.
+    await auth.actualizarCredenciales(
+      usuarioId: admin.id,
+      usuario: 'duenio',
+      password: 'clave123',
+    );
+    expect(await auth.login('duenio', 'clave123'), isNotNull);
+
+    final inspeccion = await service.inspeccionar(
+      copia.bytes,
+      nombre: copia.nombre,
+      fechaArchivo: copia.fecha,
+    );
+    await service.restaurar(inspeccion);
+
+    expect(service.adminsConservados, 1);
+    // El administrador local no estaba en la copia y se conservó.
+    expect(await auth.login('duenio', 'clave123'), isNotNull);
+    // El administrador de la copia también existe.
+    expect(await auth.login('admin', '1234'), isNotNull);
   });
 }

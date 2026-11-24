@@ -52,6 +52,7 @@ class _ProductsPageState extends State<ProductsPage> {
   String _search = '';
   int? _categoriaId;
   bool _soloActivos = false;
+  bool _soloRecientes = false;
 
   @override
   void initState() {
@@ -148,10 +149,8 @@ class _ProductsPageState extends State<ProductsPage> {
   Future<void> _openPresentaciones(Producto producto) async {
     final saved = await showDialog<bool>(
       context: context,
-      builder: (_) => _PresentacionesDialog(
-        repository: _repository,
-        producto: producto,
-      ),
+      builder: (_) =>
+          _PresentacionesDialog(repository: _repository, producto: producto),
     );
     if (saved == true && mounted) {
       setState(_reload);
@@ -209,6 +208,13 @@ class _ProductsPageState extends State<ProductsPage> {
           if (term.isEmpty) return true;
           return producto.nombre.toLowerCase().contains(term);
         }).toList();
+        if (_soloRecientes) {
+          filtrados.sort((a, b) {
+            final fechaA = a.creadoEn ?? DateTime.fromMillisecondsSinceEpoch(0);
+            final fechaB = b.creadoEn ?? DateTime.fromMillisecondsSinceEpoch(0);
+            return fechaB.compareTo(fechaA);
+          });
+        }
 
         return SingleChildScrollView(
           padding: EdgeInsets.all(
@@ -281,6 +287,16 @@ class _ProductsPageState extends State<ProductsPage> {
                       onSelected: (value) =>
                           setState(() => _soloActivos = value),
                     ),
+                    FilterChip(
+                      avatar: const Icon(Icons.schedule, size: 18),
+                      label: const Text('Recientes'),
+                      selected: _soloRecientes,
+                      showCheckmark: false,
+                      tooltip:
+                          'Ordenar por fecha de creación, más nuevos primero',
+                      onSelected: (value) =>
+                          setState(() => _soloRecientes = value),
+                    ),
                   ],
                 ),
               ),
@@ -309,6 +325,7 @@ class _ProductsPageState extends State<ProductsPage> {
                     padding: const EdgeInsets.only(bottom: 10),
                     child: _ProductRow(
                       producto: producto,
+                      mostrarFecha: _soloRecientes,
                       onEdit: () => _openForm(producto),
                       onRecipe:
                           producto.esVentaDirecta ||
@@ -345,6 +362,7 @@ class _ProductRow extends StatelessWidget {
     required this.onAjustarStock,
     required this.onToggle,
     this.onPresentaciones,
+    this.mostrarFecha = false,
   });
 
   final Producto producto;
@@ -353,6 +371,7 @@ class _ProductRow extends StatelessWidget {
   final VoidCallback? onAjustarStock;
   final ValueChanged<bool> onToggle;
   final VoidCallback? onPresentaciones;
+  final bool mostrarFecha;
 
   @override
   Widget build(BuildContext context) {
@@ -429,7 +448,10 @@ class _ProductRow extends StatelessWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          '${producto.categoriaNombre} · $etiqueta',
+          mostrarFecha && producto.creadoEn != null
+              ? '${producto.categoriaNombre} · $etiqueta · '
+                    'Creado ${formatDateShort(producto.creadoEn!)}'
+              : '${producto.categoriaNombre} · $etiqueta',
           style: Theme.of(context).textTheme.bodySmall
               ?.copyWith(color: scheme.onSurfaceVariant),
         ),
@@ -671,11 +693,12 @@ class _ComboDialogState extends State<_ComboDialog> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final categoriasProductos = widget.productos
-        .map((producto) => producto.categoriaNombre)
-        .toSet()
-        .toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final categoriasProductos =
+        widget.productos
+            .map((producto) => producto.categoriaNombre)
+            .toSet()
+            .toList()
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     final termino = _buscarProductos.text.trim().toLowerCase();
     final productosFiltrados = widget.productos.where((producto) {
       if (_categoriaFiltro != null &&
@@ -771,8 +794,7 @@ class _ComboDialogState extends State<_ComboDialog> {
                         ),
                       )
                       .toList(),
-                  onChanged: (value) =>
-                      setState(() => _categoriaId = value),
+                  onChanged: (value) => setState(() => _categoriaId = value),
                 ),
                 const SizedBox(height: 12),
                 vistaPrevia,
@@ -790,7 +812,9 @@ class _ComboDialogState extends State<_ComboDialog> {
                     OutlinedButton.icon(
                       onPressed: () => _cargarImagen(ImageSource.gallery),
                       icon: const Icon(Icons.photo_library_outlined),
-                      label: Text(_hayCamara ? 'Elegir imagen' : 'Buscar imagen'),
+                      label: Text(
+                        _hayCamara ? 'Elegir imagen' : 'Buscar imagen',
+                      ),
                     ),
                     if (_imagen != null)
                       TextButton.icon(
@@ -842,9 +866,8 @@ class _ComboDialogState extends State<_ComboDialog> {
                             child: ChoiceChip(
                               label: Text(categoria),
                               selected: _categoriaFiltro == categoria,
-                              onSelected: (_) => setState(
-                                () => _categoriaFiltro = categoria,
-                              ),
+                              onSelected: (_) =>
+                                  setState(() => _categoriaFiltro = categoria),
                             ),
                           ),
                       ],
@@ -862,35 +885,38 @@ class _ComboDialogState extends State<_ComboDialog> {
                             ),
                           ]
                         : productosFiltrados
-                        .map(
-                          (producto) => CheckboxListTile(
-                            dense: true,
-                            value: _seleccionados.contains(producto.id),
-                            onChanged: (_) => _alternar(producto),
-                            controlAffinity: ListTileControlAffinity.leading,
-                            secondary: producto.imagen != null
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.memory(
-                                      producto.imagen!,
-                                      width: 40,
-                                      height: 40,
-                                      fit: BoxFit.cover,
-                                      gaplessPlayback: true,
-                                    ),
-                                  )
-                                : Icon(
-                                    Icons.restaurant,
-                                    color: Color(producto.categoriaColor),
+                              .map(
+                                (producto) => CheckboxListTile(
+                                  dense: true,
+                                  value: _seleccionados.contains(producto.id),
+                                  onChanged: (_) => _alternar(producto),
+                                  controlAffinity:
+                                      ListTileControlAffinity.leading,
+                                  secondary: producto.imagen != null
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          child: Image.memory(
+                                            producto.imagen!,
+                                            width: 40,
+                                            height: 40,
+                                            fit: BoxFit.cover,
+                                            gaplessPlayback: true,
+                                          ),
+                                        )
+                                      : Icon(
+                                          Icons.restaurant,
+                                          color: Color(producto.categoriaColor),
+                                        ),
+                                  title: Text(producto.nombre),
+                                  subtitle: Text(
+                                    '${producto.categoriaNombre} · '
+                                    '${formatMoney(producto.precio)}',
                                   ),
-                            title: Text(producto.nombre),
-                            subtitle: Text(
-                              '${producto.categoriaNombre} · '
-                              '${formatMoney(producto.precio)}',
-                            ),
-                          ),
-                        )
-                        .toList(),
+                                ),
+                              )
+                              .toList(),
                   ),
                 ),
                 if (_error != null) ...[
@@ -1001,12 +1027,19 @@ class _ProductDialogState extends State<_ProductDialog> {
     if (input == null || input.nombre.trim().isEmpty) return;
     try {
       final nombre = input.nombre.trim().toUpperCase();
+      final siguienteOrden =
+          _categorias.fold<int>(
+            0,
+            (mayor, categoria) =>
+                categoria.orden > mayor ? categoria.orden : mayor,
+          ) +
+          1;
       await widget.repository.saveCategoria(
         CategoriaProducto(
           nombre: nombre,
           color: _paleta[_categorias.length % _paleta.length],
           siempreDisponible: false,
-          orden: _categorias.length,
+          orden: siguienteOrden,
           activo: true,
         ),
       );
@@ -2021,8 +2054,7 @@ class _PresentacionesDialogState extends State<_PresentacionesDialog> {
               return const EmptyState(
                 icon: Icons.local_drink_outlined,
                 title: 'Sin presentaciones',
-                message:
-                    'Agrega tamaños (ej. 250 ml, 500 ml, 1 L) con su precio y foto.',
+                message: 'Agrega tamaños (ej. 250 ml, 500 ml, 1 L) con su precio y foto.',
               );
             }
             return ListView.separated(
@@ -2100,7 +2132,8 @@ class _PresentacionFormDialog extends StatefulWidget {
   final ProductoPresentacion? presentacion;
 
   @override
-  State<_PresentacionFormDialog> createState() => _PresentacionFormDialogState();
+  State<_PresentacionFormDialog> createState() =>
+      _PresentacionFormDialogState();
 }
 
 class _PresentacionFormDialogState extends State<_PresentacionFormDialog> {
@@ -2197,11 +2230,7 @@ class _PresentacionFormDialogState extends State<_PresentacionFormDialog> {
       ),
       clipBehavior: Clip.antiAlias,
       child: _imagen == null
-          ? Icon(
-              Icons.image_outlined,
-              size: 30,
-              color: scheme.onSurfaceVariant,
-            )
+          ? Icon(Icons.image_outlined, size: 30, color: scheme.onSurfaceVariant)
           : Image.memory(_imagen!, fit: BoxFit.cover, gaplessPlayback: true),
     );
     return AlertDialog(
@@ -2230,8 +2259,7 @@ class _PresentacionFormDialogState extends State<_PresentacionFormDialog> {
                       children: [
                         if (_hayCamara)
                           OutlinedButton.icon(
-                            onPressed: () =>
-                                _cargarImagen(ImageSource.camera),
+                            onPressed: () => _cargarImagen(ImageSource.camera),
                             icon: const Icon(
                               Icons.photo_camera_outlined,
                               size: 18,
